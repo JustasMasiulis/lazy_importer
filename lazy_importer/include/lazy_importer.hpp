@@ -13,9 +13,12 @@
 #define LI_GET(module_base, name)      \
     reinterpret_cast<decltype(&name)>( \
         ::li::detail::get_import<::li::detail::c_hash(#name)>(module_base))
+#define LI_GET_FROM(name, module) \
+    reinterpret_cast<decltype(&name)>(::li::detail::get_import<::li::detail::c_hash(#name)>(::li::detail::get_module<li::detail::c_hash(module)>())
 #define LI_LOAD(name)                                                                              \
     reinterpret_cast<std::uintptr_t>(reinterpret_cast<decltype(&::li::detail::win::LoadLibraryA)>( \
-        ::li::detail::find_cached<::li::detail::c_hash("LoadLibraryA")>())(name))
+        ::li::detail::find_nocache<::li::detail::c_hash("LoadLibraryA")>())(name))
+
 #define LI_UNLOAD(handle)                                        \
     reinterpret_cast<decltype(&::li::detail::win::FreeLibrary)>( \
         ::li::detail::find_cached<::li::detail::c_hash("FreeLibrary")>())(handle)
@@ -28,6 +31,17 @@ namespace li { namespace detail {
 
     template<std::size_t N>
     inline constexpr std::uint32_t c_hash(const char (&val)[N]) noexcept
+    {
+        auto hash = detail::hash_offset;
+        for (std::size_t i = 0; i < N - 1; ++i)
+            hash = static_cast<std::uint32_t>(
+                (hash * static_cast<std::uint64_t>(detail::hash_prime)) ^ val[i]);
+
+        return hash;
+    }
+
+    template<std::size_t N>
+    inline constexpr std::uint32_t c_hash(const wchar_t (&val)[N]) noexcept
     {
         auto hash = detail::hash_offset;
         for (std::size_t i = 0; i < N - 1; ++i)
@@ -44,10 +58,17 @@ namespace li { namespace detail {
         inline result_type operator()(const char* val) const noexcept
         {
             result_type hash = hash_offset;
-            while (*val) {
-                hash = (hash ^ *val) * hash_prime;
-                ++val;
-            }
+            while (*val)
+                hash = (hash * hash_prime) ^ *val++;
+
+            return hash;
+        }
+
+        inline result_type operator()(const wchar_t* val, unsigned short size) const noexcept
+        {
+            result_type hash = hash_offset;
+            for (unsigned short i = 0; i < size; ++i)
+                hash = (hash ^ val[i]) * hash_prime;
 
             return hash;
         }
@@ -283,55 +304,54 @@ namespace li { namespace detail {
 
     __forceinline std::uintptr_t find_import(const std::uint32_t hash) noexcept
     {
-        const auto  last_entry = &win::peb()->Ldr->InLoadOrderModuleList;
-        const auto* head = reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(last_entry->Flink);
+        const auto* head = reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
+            win::peb()->Ldr->InLoadOrderModuleList.Flink);
 
-        for (;;) {
-            if (head->InLoadOrderLinks.Flink &&
-                head->InLoadOrderLinks.Flink != reinterpret_cast<std::uintptr_t>(last_entry)) {
-                const auto  base = head->DllBase;
-                const auto* ied  = image_export_dir(base);
-                if (ied) {
-                    const auto* name_table =
-                        reinterpret_cast<const unsigned long*>(base + ied->AddressOfNames);
+    MODULE_START:
+        const auto    base = head->DllBase;
+        unsigned long i    = 0u;
 
-                    for (unsigned long i = 0; i < ied->NumberOfNames; ++i) {
-                        if (li::detail::hash{}(reinterpret_cast<const char*>(base + *name_table)) ==
-                            hash) {
-                            const auto* rva_table = reinterpret_cast<const unsigned long*>(
-                                base + ied->AddressOfFunctions);
-                            const auto* ord_table = reinterpret_cast<const unsigned short*>(
-                                base + ied->AddressOfNameOrdinals);
+        auto ied = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(static_cast<std::uintptr_t>(
+            reinterpret_cast<const win::IMAGE_NT_HEADERS*>(
+                base + reinterpret_cast<const win::IMAGE_DOS_HEADER*>(base)->e_lfanew)
+                ->OptionalHeader.DataDirectory[win::dir_entry_export]
+                .VirtualAddress));
 
-                            return base + rva_table[ord_table[i]];
-                        }
+        if (ied) {
+            ied = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
+                base + reinterpret_cast<std::uintptr_t>(ied));
+            const auto* name_table =
+                reinterpret_cast<const unsigned long*>(base + ied->AddressOfNames);
 
-                        ++name_table;
-                    }
-                }
-                head = reinterpret_cast<win::LDR_DATA_TABLE_ENTRY_T*>(head->InLoadOrderLinks.Flink);
+        IMPORT_START:
+            if (li::detail::hash{}(reinterpret_cast<const char*>(base + *name_table)) == hash) {
+                const auto* rva_table =
+                    reinterpret_cast<const unsigned long*>(base + ied->AddressOfFunctions);
+                const auto* ord_table =
+                    reinterpret_cast<const unsigned short*>(base + ied->AddressOfNameOrdinals);
+
+                return base + rva_table[ord_table[i]];
             }
-            else
-                __assume(0);
+            if (++i != ied->NumberOfNames) {
+                ++name_table;
+                goto IMPORT_START;
+            }
         }
-    }
+        head = reinterpret_cast<win::LDR_DATA_TABLE_ENTRY_T*>(head->InLoadOrderLinks.Flink);
+        goto MODULE_START;
+    } // namespace detail
 
     template<std::uint32_t Hash>
     __forceinline std::uintptr_t get_module()
     {
-        const auto  last_entry = &win::peb()->Ldr->InLoadOrderModuleList;
-        const auto* head = reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(last_entry->Flink);
+        const auto* head = reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
+            win::peb()->Ldr->InLoadOrderModuleList.Flink);
 
         for (;;) {
-            if (head->InLoadOrderLinks.Flink &&
-                head->InLoadOrderLinks.Flink != reinterpret_cast<std::uintptr_t>(last_entry)) {
-                if (hash{}(head->BaseDllName) == Hash)
-                    return head->DllBase;
+            if (hash{}(head->BaseDllName.Buffer, head->BaseDllName.Length >> 1) == Hash)
+                return head->DllBase;
 
-                head = reinterpret_cast<win::LDR_DATA_TABLE_ENTRY_T*>(head->InLoadOrderLinks.Flink);
-            }
-            else
-                __assume(0);
+            head = reinterpret_cast<win::LDR_DATA_TABLE_ENTRY_T*>(head->InLoadOrderLinks.Flink);
         }
     } // namespace detail
 
@@ -366,9 +386,43 @@ namespace li { namespace detail {
     }
 
     template<std::uint32_t Hash>
-    __forceinline std::uintptr_t find_nocache() noexcept
+    __declspec(noinline) std::uintptr_t find_nocache() noexcept
     {
-        return find_import(Hash);
+        const auto* head = reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
+            win::peb()->Ldr->InLoadOrderModuleList.Flink);
+
+    MODULE_START:
+        const auto    base = head->DllBase;
+        unsigned long i    = 0u;
+
+        auto ied = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(static_cast<std::uintptr_t>(
+            reinterpret_cast<const win::IMAGE_NT_HEADERS*>(
+                base + reinterpret_cast<const win::IMAGE_DOS_HEADER*>(base)->e_lfanew)
+                ->OptionalHeader.DataDirectory[win::dir_entry_export]
+                .VirtualAddress));
+
+        if (ied) {
+            ied = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
+                base + reinterpret_cast<std::uintptr_t>(ied));
+            const auto* name_table =
+                reinterpret_cast<const unsigned long*>(base + ied->AddressOfNames);
+
+        IMPORT_START:
+            if (li::detail::hash{}(reinterpret_cast<const char*>(base + *name_table)) == Hash) {
+                const auto* rva_table =
+                    reinterpret_cast<const unsigned long*>(base + ied->AddressOfFunctions);
+                const auto* ord_table =
+                    reinterpret_cast<const unsigned short*>(base + ied->AddressOfNameOrdinals);
+
+                return base + rva_table[ord_table[i]];
+            }
+            if (++i != ied->NumberOfNames) {
+                ++name_table;
+                goto IMPORT_START;
+            }
+        }
+        head = reinterpret_cast<win::LDR_DATA_TABLE_ENTRY_T*>(head->InLoadOrderLinks.Flink);
+        goto MODULE_START;
     }
 }} // namespace li::detail
 
