@@ -3,21 +3,26 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <intrin.h>
 
-#define LI_LAZY(name) \
-    reinterpret_cast<decltype(&name)>(::li::detail::find_cached<::li::detail::c_hash(#name)>())
-#define LI_LAZY_NOCACHE(name) \
-    reinterpret_cast<decltype(&name)>(::li::detail::find_nocache<::li::detail::c_hash(#name)>())
+#define LI_LAZY(name)                  \
+    reinterpret_cast<decltype(&name)>( \
+        ::li::detail::find_cached<::li::detail::c_hash(#name)>())
+#define LI_LAZY_NOCACHE(name)          \
+    reinterpret_cast<decltype(&name)>( \
+        ::li::detail::find_nocache<::li::detail::c_hash(#name)>())
 #define LI_MODULE(name) ::li::detail::get_module<::li::detail::c_hash(#name)>()
 #define LI_GET(module_base, name)      \
     reinterpret_cast<decltype(&name)>( \
         ::li::detail::get_import<::li::detail::c_hash(#name)>(module_base))
 #define LI_GET_FROM(name, module) \
     reinterpret_cast<decltype(&name)>(::li::detail::get_import<::li::detail::c_hash(#name)>(::li::detail::get_module<li::detail::c_hash(module)>())
-#define LI_LOAD(name)                                                                              \
-    reinterpret_cast<std::uintptr_t>(reinterpret_cast<decltype(&::li::detail::win::LoadLibraryA)>( \
-        ::li::detail::find_nocache<::li::detail::c_hash("LoadLibraryA")>())(name))
+#define LI_LOAD(name)                                                            \
+    reinterpret_cast<std::uintptr_t>(                                            \
+        reinterpret_cast<decltype(&::li::detail::win::LoadLibraryA)>(            \
+            ::li::detail::find_nocache<::li::detail::c_hash("LoadLibraryA")>())( \
+            name))
 
 #define LI_UNLOAD(handle)                                        \
     reinterpret_cast<decltype(&::li::detail::win::FreeLibrary)>( \
@@ -35,18 +40,7 @@ namespace li { namespace detail {
         auto hash = detail::hash_offset;
         for (std::size_t i = 0; i < N - 1; ++i)
             hash = static_cast<std::uint32_t>(
-                (hash * static_cast<std::uint64_t>(detail::hash_prime)) ^ val[i]);
-
-        return hash;
-    }
-
-    template<std::size_t N>
-    inline constexpr std::uint32_t c_hash(const wchar_t (&val)[N]) noexcept
-    {
-        auto hash = detail::hash_offset;
-        for (std::size_t i = 0; i < N - 1; ++i)
-            hash = static_cast<std::uint32_t>((hash ^ val[i]) *
-                                              static_cast<std::uint64_t>(detail::hash_prime));
+                (hash ^ val[i]) * static_cast<std::uint64_t>(detail::hash_prime));
 
         return hash;
     }
@@ -59,17 +53,7 @@ namespace li { namespace detail {
         {
             result_type hash = hash_offset;
             while (*val)
-                hash = (hash * hash_prime) ^ *val++;
-
-            return hash;
-        }
-
-        inline result_type operator()(const wchar_t* val, unsigned short size) const noexcept
-        {
-            result_type hash = hash_offset;
-            for (unsigned short i = 0; i < size; ++i)
-                hash = (hash ^ val[i]) * hash_prime;
-
+                hash = (hash ^ *val++) * hash_prime;
             return hash;
         }
     };
@@ -277,153 +261,63 @@ namespace li { namespace detail {
         __forceinline const PEB_T* peb() noexcept
         {
 #if defined(_WIN64)
-            return reinterpret_cast<const TEB*>(__readgsqword(offsetof(NT_TIB, Self)))
+            return reinterpret_cast<const TEB*>(
+                       __readgsqword(offsetof(NT_TIB, Self)))
                 ->ProcessEnvironmentBlock;
 #else
-            return reinterpret_cast<const TEB*>(__readfsdword(offsetof(NT_TIB, Self)))
+            return reinterpret_cast<const TEB*>(
+                       __readfsdword(offsetof(NT_TIB, Self)))
                 ->ProcessEnvironmentBlock;
 #endif
         }
 
     } // namespace win
 
-    __forceinline const win::IMAGE_EXPORT_DIRECTORY*
-    image_export_dir(const std::uintptr_t base) noexcept
-    {
-        const auto idd_virtual_addr =
-            reinterpret_cast<const win::IMAGE_NT_HEADERS*>(
-                base + reinterpret_cast<const win::IMAGE_DOS_HEADER*>(base)->e_lfanew)
-                ->OptionalHeader.DataDirectory[win::dir_entry_export]
-                .VirtualAddress;
-
-        if (!idd_virtual_addr)
-            return nullptr;
-
-        return reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(base + idd_virtual_addr);
-    }
-
-    __forceinline std::uintptr_t find_import(const std::uint32_t hash) noexcept
-    {
-        const auto* head = reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
-            win::peb()->Ldr->InLoadOrderModuleList.Flink);
-
-    MODULE_START:
-        const auto    base = head->DllBase;
-        unsigned long i    = 0u;
-
-        auto ied = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(static_cast<std::uintptr_t>(
-            reinterpret_cast<const win::IMAGE_NT_HEADERS*>(
-                base + reinterpret_cast<const win::IMAGE_DOS_HEADER*>(base)->e_lfanew)
-                ->OptionalHeader.DataDirectory[win::dir_entry_export]
-                .VirtualAddress));
-
-        if (ied) {
-            ied = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
-                base + reinterpret_cast<std::uintptr_t>(ied));
-            const auto* name_table =
-                reinterpret_cast<const unsigned long*>(base + ied->AddressOfNames);
-
-        IMPORT_START:
-            if (li::detail::hash{}(reinterpret_cast<const char*>(base + *name_table)) == hash) {
-                const auto* rva_table =
-                    reinterpret_cast<const unsigned long*>(base + ied->AddressOfFunctions);
-                const auto* ord_table =
-                    reinterpret_cast<const unsigned short*>(base + ied->AddressOfNameOrdinals);
-
-                return base + rva_table[ord_table[i]];
-            }
-            if (++i != ied->NumberOfNames) {
-                ++name_table;
-                goto IMPORT_START;
-            }
-        }
-        head = reinterpret_cast<win::LDR_DATA_TABLE_ENTRY_T*>(head->InLoadOrderLinks.Flink);
-        goto MODULE_START;
-    } // namespace detail
-
-    template<std::uint32_t Hash>
-    __forceinline std::uintptr_t get_module()
-    {
-        const auto* head = reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
-            win::peb()->Ldr->InLoadOrderModuleList.Flink);
-
-        for (;;) {
-            if (hash{}(head->BaseDllName.Buffer, head->BaseDllName.Length >> 1) == Hash)
-                return head->DllBase;
-
-            head = reinterpret_cast<win::LDR_DATA_TABLE_ENTRY_T*>(head->InLoadOrderLinks.Flink);
-        }
-    } // namespace detail
-
-    template<std::uint32_t Hash>
-    __forceinline std::uintptr_t get_import(const std::uintptr_t base)
-    {
-        const auto* ied        = image_export_dir(base);
-        const auto* name_table = reinterpret_cast<const unsigned long*>(base + ied->AddressOfNames);
-
-        for (int i = 0;; ++i) {
-            if (li::detail::hash{}(reinterpret_cast<const char*>(base + *name_table)) == Hash) {
-                const auto* rva_table =
-                    reinterpret_cast<const unsigned long*>(base + ied->AddressOfFunctions);
-                const auto* ord_table =
-                    reinterpret_cast<const unsigned short*>(base + ied->AddressOfNameOrdinals);
-
-                return base + rva_table[ord_table[i]];
-            }
-
-            ++name_table;
-        }
-    }
-
-    template<std::uint32_t Hash>
-    __forceinline std::uintptr_t find_cached() noexcept
-    {
-        static std::uintptr_t import = 0;
-        if (!import)
-            import = find_import(Hash);
-
-        return import;
-    }
-
     template<std::uint32_t Hash>
     __declspec(noinline) std::uintptr_t find_nocache() noexcept
     {
         const auto* head = reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
             win::peb()->Ldr->InLoadOrderModuleList.Flink);
+        std::uintptr_t                     base;
+        unsigned long                      i;
+        const win::IMAGE_EXPORT_DIRECTORY* ied;
 
     MODULE_START:
-        const auto    base = head->DllBase;
-        unsigned long i    = 0u;
+        base = head->DllBase;
+        i    = 0u;
 
-        auto ied = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(static_cast<std::uintptr_t>(
+        ied = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
+            base +
             reinterpret_cast<const win::IMAGE_NT_HEADERS*>(
-                base + reinterpret_cast<const win::IMAGE_DOS_HEADER*>(base)->e_lfanew)
-                ->OptionalHeader.DataDirectory[win::dir_entry_export]
-                .VirtualAddress));
+                base +
+                reinterpret_cast<const win::IMAGE_DOS_HEADER*>(base)->e_lfanew)
+                ->OptionalHeader.DataDirectory->VirtualAddress);
 
-        if (ied) {
-            ied = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
-                base + reinterpret_cast<std::uintptr_t>(ied));
-            const auto* name_table =
-                reinterpret_cast<const unsigned long*>(base + ied->AddressOfNames);
-
+        if (reinterpret_cast<std::uintptr_t>(ied) != base) {
         IMPORT_START:
-            if (li::detail::hash{}(reinterpret_cast<const char*>(base + *name_table)) == Hash) {
-                const auto* rva_table =
-                    reinterpret_cast<const unsigned long*>(base + ied->AddressOfFunctions);
-                const auto* ord_table =
-                    reinterpret_cast<const unsigned short*>(base + ied->AddressOfNameOrdinals);
+            const auto* const name_table =
+                reinterpret_cast<const unsigned long*>(base + ied->AddressOfNames) +
+                i;
+            if (li::detail::hash{}(
+                    reinterpret_cast<const char*>(base + *name_table)) == Hash) {
+                const auto* const rva_table = reinterpret_cast<const unsigned long*>(
+                    base + ied->AddressOfFunctions);
+
+                const auto* const ord_table =
+                    reinterpret_cast<const unsigned short*>(
+                        base + ied->AddressOfNameOrdinals);
 
                 return base + rva_table[ord_table[i]];
             }
-            if (++i != ied->NumberOfNames) {
-                ++name_table;
+            if (++i != ied->NumberOfNames)
                 goto IMPORT_START;
-            }
         }
-        head = reinterpret_cast<win::LDR_DATA_TABLE_ENTRY_T*>(head->InLoadOrderLinks.Flink);
+        head = reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
+            head->InLoadOrderLinks.Flink);
+
         goto MODULE_START;
     }
+
 }} // namespace li::detail
 
 #endif // include guard
