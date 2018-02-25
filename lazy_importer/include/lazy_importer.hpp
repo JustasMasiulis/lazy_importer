@@ -6,18 +6,9 @@
 #include <cstring>
 #include <intrin.h>
 
-#define LI_LAZY(name)                  \
-    reinterpret_cast<decltype(&name)>( \
-        ::li::detail::find_cached<::li::detail::c_hash(#name)>())
-#define LI_LAZY_NOCACHE(name)          \
+#define LI_GET(name)                   \
     reinterpret_cast<decltype(&name)>( \
         ::li::detail::find_nocache<::li::detail::c_hash(#name)>())
-#define LI_MODULE(name) ::li::detail::get_module<::li::detail::c_hash(#name)>()
-#define LI_GET(module_base, name)      \
-    reinterpret_cast<decltype(&name)>( \
-        ::li::detail::get_import<::li::detail::c_hash(#name)>(module_base))
-#define LI_GET_FROM(name, module) \
-    reinterpret_cast<decltype(&name)>(::li::detail::get_import<::li::detail::c_hash(#name)>(::li::detail::get_module<li::detail::c_hash(module)>())
 #define LI_LOAD(name)                                                            \
     reinterpret_cast<std::uintptr_t>(                                            \
         reinterpret_cast<decltype(&::li::detail::win::LoadLibraryA)>(            \
