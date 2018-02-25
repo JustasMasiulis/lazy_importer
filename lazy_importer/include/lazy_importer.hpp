@@ -265,7 +265,7 @@ namespace li { namespace detail {
     } // namespace win
 
     template<std::uint32_t Hash>
-    __declspec(noinline) std::uintptr_t find_nocache() noexcept
+    __forceinline std::uintptr_t find_nocache() noexcept
     {
         const auto* head = reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
             win::peb()->Ldr->InLoadOrderModuleList.Flink);
