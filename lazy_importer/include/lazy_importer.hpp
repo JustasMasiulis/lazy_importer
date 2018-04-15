@@ -8,9 +8,33 @@
 
 // usage example: LI_GET(LoadLibraryA)("user32.dll");
 
-#define LI_GET(name)                   \
+// can be used for any function. Prefer for functions that you call rarely.
+#define LI_FIND(name)                  \
     reinterpret_cast<decltype(&name)>( \
         ::li::detail::find_nocache<::li::detail::hash(#name)>())
+
+// can be used for any function. Prefer for functions that you call often.
+#define LI_FIND_CACHED(name)           \
+    reinterpret_cast<decltype(&name)>( \
+        ::li::detail::find_cached<::li::detail::hash(#name)>())
+
+// can be used for any function in provided module.
+// There is no cached version because there might be functions with the same
+// name in separate modules. If that is not a concern for you feel free to add
+// it yourself
+#define LI_GET(module_base, name)      \
+    reinterpret_cast<decltype(&name)>( \
+        ::li::detail::find_in_module<::li::detail::hash(#name)>(module_base))
+
+// can be used for ntdll exports. Prefer for functions that you call rarely.
+#define LI_NT(name)                    \
+    reinterpret_cast<decltype(&name)>( \
+        ::li::detail::find_nt<::li::detail::hash(#name)>())
+
+// can be used for ntdll exports. Prefer for functions that you call often.
+#define LI_NT_CACHED(name)             \
+    reinterpret_cast<decltype(&name)>( \
+        ::li::detail::find_nt<::li::detail::hash(#name)>())
 
 #ifndef LAZY_IMPORTER_WINDOWS_INCLUDE_DIR
 #define WIN32_LEAN_AND_MEAN
@@ -192,6 +216,26 @@ namespace li { namespace detail {
     };
 
     template<std::uint32_t Hash>
+    LAZY_IMPORTER_FORCEINLINE std::uintptr_t
+                              find_in_module(std::uintptr_t module_base)
+    {
+        const exports_directory exports(module_base);
+
+        // no need to check validity, count etc.
+        for (auto i = 0u;; ++i)
+            if (hash(exports.name(i)) == Hash)
+                return exports.address(i);
+    }
+
+    template<std::uint32_t Hash>
+    LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nt()
+    {
+        // load the next entry which will be ntdll
+        const auto* const head = ldr_data_entry()->load_order_next();
+        return find_in_module<Hash>(head->DllBase);
+    }
+
+    template<std::uint32_t Hash>
     LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nocache() noexcept
     {
         const auto* head = ldr_data_entry();
@@ -214,6 +258,15 @@ namespace li { namespace detail {
         static std::uintptr_t address = 0;
         if (!address)
             address = find_nocache<Hash>();
+        return address;
+    }
+
+    template<std::uint32_t Hash>
+    LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nt_cached() noexcept
+    {
+        static std::uintptr_t address = 0;
+        if (!address)
+            address = find_nt<Hash>();
         return address;
     }
 
