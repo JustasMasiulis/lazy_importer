@@ -1,7 +1,17 @@
 #ifndef LAZY_IMPORTER_HPP
 #define LAZY_IMPORTER_HPP
 
-// in case you don't want to drag in the whole windows file
+// define LAZY_IMPORTER_NO_FORCEINLINE to disable force inlining
+
+// define LAZY_IMPORTER_WINDOWS_INCLUDE_DIR with your files include path
+// not to use <Windows.h> and <Winternl.h>
+
+// usage example: LI_GET(LoadLibraryA)("user32.dll");
+
+#define LI_GET(name)                   \
+    reinterpret_cast<decltype(&name)>( \
+        ::li::detail::find_nocache<::li::detail::hash(#name)>())
+
 #ifndef LAZY_IMPORTER_WINDOWS_INCLUDE_DIR
 #define WIN32_LEAN_AND_MEAN
 #define WIN32_NO_STATUS
@@ -17,16 +27,21 @@
 #include <cstddef>
 #include <intrin.h>
 
-#define LI_GET(name)                   \
-    reinterpret_cast<decltype(&name)>( \
-        ::li::detail::find_nocache<::li::detail::hash(#name)>())
+#ifndef LAZY_IMPORTER_NO_FORCEINLINE
+#if defined(_MSC_VER)
+#define LAZY_IMPORTER_FORCEINLINE __forceinline
+#elif defined(__GNUC__) && __GNUC__ > 3
+#define LAZY_IMPORTER_FORCEINLINE inline __attribute__((__always_inline__))
+#else
+#define LAZY_IMPORTER_FORCEINLINE inline
+#endif
+#else
+#define LAZY_IMPORTER_INLINE inline
+#endif
 
 namespace li { namespace detail {
 
     namespace win {
-
-        int __stdcall FreeLibrary(void*);
-        void* __stdcall LoadLibraryA(const char*);
 
         struct PEB_LDR_DATA_T {
             unsigned long  Length;
@@ -48,7 +63,8 @@ namespace li { namespace detail {
             UNICODE_STRING FullDllName;
             UNICODE_STRING BaseDllName;
 
-            const LDR_DATA_TABLE_ENTRY_T* load_order_next() const noexcept
+            LAZY_IMPORTER_FORCEINLINE const LDR_DATA_TABLE_ENTRY_T*
+                                            load_order_next() const noexcept
             {
                 return reinterpret_cast<const LDR_DATA_TABLE_ENTRY_T*>(
                     InLoadOrderLinks.Flink);
@@ -83,7 +99,8 @@ namespace li { namespace detail {
     constexpr static hash_value_type hash_offset = 2166136261;
     constexpr static hash_value_type hash_prime  = 16777619;
 
-    constexpr inline hash_value_type hash(const char* val) noexcept
+    LAZY_IMPORTER_FORCEINLINE constexpr hash_value_type
+    hash(const char* val) noexcept
     {
         // casts needed to get rid of warnings
         auto value = hash_offset;
@@ -94,7 +111,7 @@ namespace li { namespace detail {
     }
 
 
-    __forceinline const win::PEB_T* peb() noexcept
+    LAZY_IMPORTER_FORCEINLINE const win::PEB_T* peb() noexcept
     {
 #if defined(_WIN64)
         return reinterpret_cast<const win::TEB_T*>(
@@ -107,22 +124,23 @@ namespace li { namespace detail {
 #endif
     }
 
-    __forceinline const IMAGE_NT_HEADERS*
-    nt_headers(std::uintptr_t base) noexcept
+    LAZY_IMPORTER_FORCEINLINE const IMAGE_NT_HEADERS*
+                                    nt_headers(std::uintptr_t base) noexcept
     {
         return reinterpret_cast<const IMAGE_NT_HEADERS*>(
             base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
     }
 
-    __forceinline const IMAGE_EXPORT_DIRECTORY*
-    image_export_dir(std::uintptr_t base) noexcept
+    LAZY_IMPORTER_FORCEINLINE const IMAGE_EXPORT_DIRECTORY*
+                                    image_export_dir(std::uintptr_t base) noexcept
     {
         return reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(
             base +
             nt_headers(base)->OptionalHeader.DataDirectory->VirtualAddress);
     }
 
-    const win::LDR_DATA_TABLE_ENTRY_T* ldr_data_entry()
+    LAZY_IMPORTER_FORCEINLINE const win::LDR_DATA_TABLE_ENTRY_T*
+                                    ldr_data_entry() noexcept
     {
         return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
             peb()->Ldr->InLoadOrderModuleList.Flink);
@@ -135,25 +153,31 @@ namespace li { namespace detail {
     public:
         using size_type = unsigned long;
 
-        exports_directory(std::uintptr_t base)
+        LAZY_IMPORTER_FORCEINLINE
+        exports_directory(std::uintptr_t base) noexcept
             : _base(base), _ied(image_export_dir(base))
         {}
 
-        explicit operator bool() const noexcept
+        LAZY_IMPORTER_FORCEINLINE explicit operator bool() const noexcept
         {
             return reinterpret_cast<std::uintptr_t>(_ied) != _base;
         }
 
-        size_type size() const noexcept { return _ied->NumberOfNames; }
+        LAZY_IMPORTER_FORCEINLINE size_type size() const noexcept
+        {
+            return _ied->NumberOfNames;
+        }
 
-        const char* name(size_type index) const noexcept
+        LAZY_IMPORTER_FORCEINLINE const char* name(size_type index) const
+            noexcept
         {
             return reinterpret_cast<const char*>(
                 _base + reinterpret_cast<const unsigned long*>(
                             _base + _ied->AddressOfNames)[index]);
         }
 
-        std::uintptr_t address(size_type index) const noexcept
+        LAZY_IMPORTER_FORCEINLINE std::uintptr_t address(size_type index) const
+            noexcept
         {
             const auto* const rva_table =
                 reinterpret_cast<const unsigned long*>(
@@ -168,7 +192,7 @@ namespace li { namespace detail {
     };
 
     template<std::uint32_t Hash>
-    __forceinline std::uintptr_t find_nocache() noexcept
+    LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nocache() noexcept
     {
         const auto* head = ldr_data_entry();
 
@@ -182,6 +206,15 @@ namespace li { namespace detail {
 
             head = head->load_order_next();
         }
+    }
+
+    template<std::uint32_t Hash>
+    LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_cached() noexcept
+    {
+        static std::uintptr_t address = 0;
+        if (!address)
+            address = find_nocache<Hash>();
+        return address;
     }
 
 }} // namespace li::detail
