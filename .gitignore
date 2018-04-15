@@ -7,6 +7,12 @@
 *.userosscache
 *.sln.docstates
 
+# VS project files
+lazy_importer.sln
+lazy_importer.vcxproj
+lazy_importer.vcxproj.filters
+lazy_importer.vcxproj.user
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
