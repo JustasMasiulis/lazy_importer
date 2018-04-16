@@ -143,13 +143,14 @@ namespace li { namespace detail {
     } // namespace win
 
     // hashing stuff
-    using hash_value_type                        = std::uint32_t;
-    constexpr static hash_value_type hash_offset = 2166136261;
-    constexpr static hash_value_type hash_prime  = 16777619;
+    using hash_value_type = std::uint32_t;
 
     LAZY_IMPORTER_FORCEINLINE constexpr hash_value_type
     hash(const char* str) noexcept
     {
+        constexpr hash_value_type hash_offset = 2166136261;
+        constexpr hash_value_type hash_prime  = 16777619;
+
         // casts needed to get rid of warnings
         auto value = hash_offset;
         for (char c = *str; c; c = *++str)
@@ -160,7 +161,7 @@ namespace li { namespace detail {
         return value;
     }
 
-
+    // some helper functions
     LAZY_IMPORTER_FORCEINLINE const win::PEB_T* peb() noexcept
     {
 #if defined(_WIN64)
@@ -241,7 +242,7 @@ namespace li { namespace detail {
         }
     };
 
-    template<std::uint32_t Hash>
+    template<hash_value_type Hash>
     LAZY_IMPORTER_FORCEINLINE std::uintptr_t
                               find_in_module(std::uintptr_t module_base) noexcept
     {
@@ -254,7 +255,7 @@ namespace li { namespace detail {
                 return exports.address(i);
     }
 
-    template<std::uint32_t Hash>
+    template<hash_value_type Hash>
     LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nt() noexcept
     {
         // load the next entry which will be ntdll
@@ -262,7 +263,7 @@ namespace li { namespace detail {
         return find_in_module<Hash>(head->DllBase);
     }
 
-    template<std::uint32_t Hash>
+    template<hash_value_type Hash>
     LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nocache() noexcept
     {
         const auto* head = ldr_data_entry();
@@ -279,16 +280,17 @@ namespace li { namespace detail {
         }
     }
 
-    template<std::uint32_t Hash>
+    template<hash_value_type Hash>
     LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_cached() noexcept
     {
+        // don't replace this with "address = find_nocache<Hash>();"
         static std::uintptr_t address = 0;
         if (!address)
             address = find_nocache<Hash>();
         return address;
     }
 
-    template<std::uint32_t Hash>
+    template<hash_value_type Hash>
     LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nt_cached() noexcept
     {
         static std::uintptr_t address = 0;
