@@ -1,5 +1,5 @@
 # lazy importer
-A simple and easy to use library to make the life of a reverse engineer much harder.
+A simple and easy to use header only library to make the life of a reverse engineer much harder.
 
 ## Small example
 ```cpp

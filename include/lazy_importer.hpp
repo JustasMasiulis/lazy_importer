@@ -24,7 +24,7 @@
 // define LAZY_IMPORTER_WINDOWS_INCLUDE_DIR with your files include path
 // not to use <Windows.h> and <Winternl.h>
 
-// usage example: LI_GET(LoadLibraryA)("user32.dll");
+// usage example: LI_FIND(LoadLibraryA)("user32.dll");
 
 // can be used for any function. Prefer for functions that you call rarely.
 #define LI_FIND(name)                  \
