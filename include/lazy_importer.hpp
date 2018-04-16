@@ -19,6 +19,8 @@
 
 // define LAZY_IMPORTER_NO_FORCEINLINE to disable force inlining
 
+// define LAZY_IMPORTER_CASE_INSENSITIVE to enable case insensitive comparisons
+
 // define LAZY_IMPORTER_WINDOWS_INCLUDE_DIR with your files include path
 // not to use <Windows.h> and <Winternl.h>
 
@@ -77,6 +79,12 @@
 #endif
 #else
 #define LAZY_IMPORTER_INLINE inline
+#endif
+
+#ifdef LAZY_IMPORTER_CASE_INSENSITIVE
+#define LAZY_IMPORTER_TOLOWER(c) (c >= 'A' && c <= 'Z' ? (c | (1 << 5)) : c)
+#else
+#define LAZY_IMPORTER_TOLOWER(c) (c)
 #endif
 
 namespace li { namespace detail {
@@ -140,13 +148,15 @@ namespace li { namespace detail {
     constexpr static hash_value_type hash_prime  = 16777619;
 
     LAZY_IMPORTER_FORCEINLINE constexpr hash_value_type
-    hash(const char* val) noexcept
+    hash(const char* str) noexcept
     {
         // casts needed to get rid of warnings
         auto value = hash_offset;
-        while (*val)
+        for (char c = *str; c; c = *++str)
             value = static_cast<hash_value_type>(
-                (value ^ *val++) * static_cast<std::uint64_t>(hash_prime));
+                (value ^ LAZY_IMPORTER_TOLOWER(c)) *
+                static_cast<std::uint64_t>(hash_prime));
+
         return value;
     }
 
@@ -233,18 +243,19 @@ namespace li { namespace detail {
 
     template<std::uint32_t Hash>
     LAZY_IMPORTER_FORCEINLINE std::uintptr_t
-                              find_in_module(std::uintptr_t module_base)
+                              find_in_module(std::uintptr_t module_base) noexcept
     {
         const exports_directory exports(module_base);
 
-        // no need to check validity, count etc.
+        // we will trust the user with the fact that he provides valid module
+        // which has the export
         for (auto i = 0u;; ++i)
             if (hash(exports.name(i)) == Hash)
                 return exports.address(i);
     }
 
     template<std::uint32_t Hash>
-    LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nt()
+    LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nt() noexcept
     {
         // load the next entry which will be ntdll
         const auto* const head = ldr_data_entry()->load_order_next();

@@ -1,7 +1,7 @@
 # lazy importer
 A simple and easy to use library to make the life of a reverse engineer much harder.
 
-## small example
+## Small example
 ```cpp
 LI_FIND(MessageBoxA)(nullptr, "hello world", nullptr, 0);
 ```
@@ -84,6 +84,8 @@ Iterates trough exports of given module.
 None of these functions throw exceptions and are linear in complexity.
 
 ## Extra configuration
-define LAZY_IMPORTER_NO_FORCEINLINE to disable force inlining
+define LAZY_IMPORTER_NO_FORCEINLINE to disable force inlining.
+
+define LAZY_IMPORTER_CASE_INSENSITIVE to enable case insensitive comparisons.
 
 define LAZY_IMPORTER_WINDOWS_INCLUDE_DIR with your files include path not to use <Windows.h> and <Winternl.h>
