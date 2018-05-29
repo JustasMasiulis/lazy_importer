@@ -88,4 +88,6 @@ define LAZY_IMPORTER_NO_FORCEINLINE to disable force inlining.
 
 define LAZY_IMPORTER_CASE_INSENSITIVE to enable case insensitive comparisons.
 
+define LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS to enable resolution of forwarded exports. IMPORTANT: LAZY_IMPORTER_CASE_INSENSITIVE might be necessary for this option to function properly.
+
 define LAZY_IMPORTER_WINDOWS_INCLUDE_DIR with your files include path not to use <Windows.h> and <Winternl.h>
