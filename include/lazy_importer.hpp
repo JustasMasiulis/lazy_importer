@@ -38,7 +38,7 @@
 // can be used for any function. Prefer for functions that you call often.
 #define LI_FIND_CACHED(name)           \
     reinterpret_cast<decltype(&name)>( \
-        ::li::detail::find_cached<::li::detail::hash(#name)>())
+        ::li::detail::find_nt_cached<::li::detail::hash(#name)>())
 
 // can be used for any function in provided module.
 // There is no cached version because there might be functions with the same
@@ -67,6 +67,7 @@
 #include LAZY_IMPORTER_WINDOWS_INCLUDE_DIR
 #endif
 
+#include <utility>
 #include <cstdint>
 #include <cstddef>
 #include <intrin.h>
