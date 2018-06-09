@@ -67,19 +67,19 @@ LABEL_9:
 ```
 
 ## Documentation
-lazy importer exposes 5 rather self explanatory macros.
+lazy importer exposes 3 rather self explanatory macros with multiple "overloads".
 
-2 of those macros have _CACHED counterparts that take use of static variables 
-and templates to cache the results for faster execution of subsequent calls to same function.
-
-`LI_FIND[_CACHED)](function)`
+`LI_FIND[_DEF][_CACHED](function)`
 Iterates trough all modules and their exports.
 
-`LI_NT[_CACHED](function)`
+`LI_NT[_DEF][_CACHED](function)`
 Iterates trough `ntdll.dll` exports.
 
-`LI_GET(module_base_address, function)`
+`LI_GET[_DEF](module_base_address, function)`
 Iterates trough exports of given module.
+
+If macro name contains "_DEF" the expected parameter "function" is a typedef/alias, otherwise a function pointer.
+If macro name contains "_CACHED" a static variable will be used to store the function pointer for fast access in subsequent calls. Note that for each hash there is a separate static variable.
 
 None of these functions throw exceptions and are linear in complexity.
 

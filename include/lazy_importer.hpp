@@ -28,17 +28,33 @@
 // define LAZY_IMPORTER_WINDOWS_INCLUDE_DIR with your files include path
 // not to use <Windows.h> and <Winternl.h>
 
-// usage example: LI_FIND(LoadLibraryA)("user32.dll");
+// DEF functions are for use with typedefs
+// non DEF functions are for use with function pointers
+
+
+// usage examples:
+
+// using a function pointer:
+// HMODULE __stdcall LoadLibraryA(const char*);
+// LI_FIND(LoadLibraryA)("user32.dll");
+
+// using a typedef:
+// using LoadLibraryA = HMODULE (__stdcall*)(const char*);
+// LI_FIND_DEF(LoadLibraryA)("user32.dll");
 
 // can be used for any function. Prefer for functions that you call rarely.
 #define LI_FIND(name)                  \
     reinterpret_cast<decltype(&name)>( \
         ::li::detail::find_nocache<::li::detail::hash(#name)>())
+#define LI_FIND_DEF(name) \
+    reinterpret_cast<name>(::li::detail::find_nocache<::li::detail::hash(#name)>())
 
 // can be used for any function. Prefer for functions that you call often.
 #define LI_FIND_CACHED(name)           \
     reinterpret_cast<decltype(&name)>( \
-        ::li::detail::find_nt_cached<::li::detail::hash(#name)>())
+        ::li::detail::find_cached<::li::detail::hash(#name)>())
+#define LI_FIND_DEF_CACHED(name) \
+    reinterpret_cast<name>(::li::detail::find_cached<::li::detail::hash(#name)>())
 
 // can be used for any function in provided module.
 // There is no cached version because there might be functions with the same
@@ -47,14 +63,22 @@
 #define LI_GET(module_base, name)      \
     reinterpret_cast<decltype(&name)>( \
         ::li::detail::find_in_module<::li::detail::hash(#name)>(module_base))
+#define LI_GET_DEF(module_base, name) \
+    reinterpret_cast<name>(           \
+        ::li::detail::find_in_module<::li::detail::hash(#name)>(module_base))
 
 // can be used for ntdll exports. Prefer for functions that you call rarely.
 #define LI_NT(name) \
     reinterpret_cast<decltype(&name)>(::li::detail::find_nt<::li::detail::hash(#name)>())
+#define LI_NT_DEF(name) \
+    reinterpret_cast<name>(::li::detail::find_nt<::li::detail::hash(#name)>())
 
 // can be used for ntdll exports. Prefer for functions that you call often.
-#define LI_NT_CACHED(name) \
-    reinterpret_cast<decltype(&name)>(::li::detail::find_nt<::li::detail::hash(#name)>())
+#define LI_NT_CACHED(name)             \
+    reinterpret_cast<decltype(&name)>( \
+        ::li::detail::find_nt_cached<::li::detail::hash(#name)>())
+#define LI_NT_DEF_CACHED(name) \
+    reinterpret_cast<name>(::li::detail::find_nt_cached<::li::detail::hash(#name)>())
 
 #ifndef LAZY_IMPORTER_WINDOWS_INCLUDE_DIR
 #define WIN32_LEAN_AND_MEAN
@@ -122,27 +146,6 @@ namespace li { namespace detail {
             }
         };
 
-        struct PEB_T {
-            unsigned char   Reserved1[2];
-            unsigned char   BeingDebugged;
-            unsigned char   Reserved2[1];
-            std::uintptr_t  Reserved3[2];
-            PEB_LDR_DATA_T* Ldr;
-        };
-
-        struct TEB_T {
-            void*   Reserved1[12];
-            PEB_T*  ProcessEnvironmentBlock;
-            void*   Reserved2[399];
-            uint8_t Reserved3[1952];
-            void*   TlsSlots[64];
-            uint8_t Reserved4[8];
-            void*   Reserved5[26];
-            void*   ReservedForOle; // Windows 2000 only
-            void*   Reserved6[4];
-            void*   TlsExpansionSlots;
-        };
-
     } // namespace win
 
     // hashing stuff
@@ -177,7 +180,7 @@ namespace li { namespace detail {
         const auto last  = first + ((str.Length / sizeof(wchar_t)) - 4); // - ".dll"
         auto       value = hash_t::offset;
         for(; first != last; ++first)
-            hash_t::single(value, *first);
+            hash_t::single(value, static_cast<char>(*first));
 
         return value;
     }
@@ -202,15 +205,22 @@ namespace li { namespace detail {
 
 
     // some helper functions
-    LAZY_IMPORTER_FORCEINLINE const win::PEB_T* peb() noexcept
+    LAZY_IMPORTER_FORCEINLINE const PEB* peb() noexcept
     {
 #if defined(_WIN64)
-        return reinterpret_cast<const win::TEB_T*>(__readgsqword(offsetof(NT_TIB, Self)))
+        return reinterpret_cast<const TEB*>(__readgsqword(offsetof(NT_TIB, Self)))
+            ->ProcessEnvironmentBlock;
+#elif defined(_WIN32)
+        return reinterpret_cast<const TEB*>(__readfsdword(offsetof(NT_TIB, Self)))
             ->ProcessEnvironmentBlock;
 #else
-        return reinterpret_cast<const win::TEB_T*>(__readfsdword(offsetof(NT_TIB, Self)))
-            ->ProcessEnvironmentBlock;
+#error unsupported platform. Open an issues and I might add something for you.
 #endif
+    }
+
+    LAZY_IMPORTER_FORCEINLINE const win::PEB_LDR_DATA_T* ldr()
+    {
+        return reinterpret_cast<const win::PEB_LDR_DATA_T*>(peb()->Ldr);
     }
 
     LAZY_IMPORTER_FORCEINLINE const IMAGE_NT_HEADERS*
@@ -230,7 +240,7 @@ namespace li { namespace detail {
     LAZY_IMPORTER_FORCEINLINE const win::LDR_DATA_TABLE_ENTRY_T* ldr_data_entry() noexcept
     {
         return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
-            peb()->Ldr->InLoadOrderModuleList.Flink);
+            ldr()->InLoadOrderModuleList.Flink);
     }
 
     struct exports_directory {
@@ -300,8 +310,6 @@ namespace li { namespace detail {
 #endif
     };
 
-    // LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_module(hash_value_type hash) {}
-
     template<hash_t::value_type Hash>
     LAZY_IMPORTER_FORCEINLINE std::uintptr_t
                               find_in_module(std::uintptr_t module_base) noexcept
@@ -310,7 +318,7 @@ namespace li { namespace detail {
 
         // we will trust the user with the fact that he provides valid module
         // which has the export
-        for(auto i = 0u;; ++i)
+        for(unsigned long i = 0u;; ++i)
             if(hash(exports.name(i)) == Hash)
                 return exports.address(i);
     }
@@ -384,7 +392,7 @@ namespace li { namespace detail {
         // don't replace this with "address = find_nocache<Hash>();"
         static std::uintptr_t address = 0;
         if(!address)
-            address = find_nocache<Hash>();
+            kaddress = find_nocache<Hash>();
         return address;
     }
 
