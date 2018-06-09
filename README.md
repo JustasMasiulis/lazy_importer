@@ -78,8 +78,8 @@ Iterates trough `ntdll.dll` exports.
 `LI_GET[_DEF](module_base_address, function)`
 Iterates trough exports of given module.
 
-If macro name contains "_DEF" the expected parameter "function" is a typedef/alias, otherwise a function pointer.
-If macro name contains "_CACHED" a static variable will be used to store the function pointer for fast access in subsequent calls. Note that for each hash there is a separate static variable.
+* If macro name contains "_DEF" the expected parameter "function" is a typedef/alias, otherwise a function pointer.
+* If macro name contains "_CACHED" a static variable will be used to store the function pointer for fast access in subsequent calls. Note that for each hash there is a separate static variable.
 
 None of these functions throw exceptions and are linear in complexity.
 
