@@ -80,17 +80,6 @@
 #define LI_NT_DEF_CACHED(name) \
     reinterpret_cast<name>(::li::detail::find_nt_cached<::li::detail::hash(#name)>())
 
-#ifndef LAZY_IMPORTER_WINDOWS_INCLUDE_DIR
-#define WIN32_LEAN_AND_MEAN
-#define WIN32_NO_STATUS
-#include <Windows.h>
-#include <Winternl.h>
-#undef WIN32_LEAN_AND_MEAN
-#undef WIN32_NO_STATUS
-#else
-#include LAZY_IMPORTER_WINDOWS_INCLUDE_DIR
-#endif
-
 #include <utility>
 #include <cstdint>
 #include <cstddef>
@@ -118,25 +107,44 @@ namespace li { namespace detail {
 
     namespace win {
 
+        struct LIST_ENTRY_T {
+            std::uintptr_t Flink;
+            std::uintptr_t Blink;
+        };
+
+        struct UNICODE_STRING_T {
+            unsigned short Length;
+            unsigned short MaximumLength;
+            wchar_t*       Buffer;
+        };
+
         struct PEB_LDR_DATA_T {
             unsigned long  Length;
             unsigned long  Initialized;
             std::uintptr_t SsHandle;
-            LIST_ENTRY     InLoadOrderModuleList;
+            LIST_ENTRY_T   InLoadOrderModuleList;
+        };
+
+        struct PEB_T {
+            unsigned char   Reserved1[2];
+            unsigned char   BeingDebugged;
+            unsigned char   Reserved2[1];
+            std::uintptr_t  Reserved3[2];
+            PEB_LDR_DATA_T* Ldr;
         };
 
         struct LDR_DATA_TABLE_ENTRY_T {
-            LIST_ENTRY     InLoadOrderLinks;
-            LIST_ENTRY     InMemoryOrderLinks;
-            LIST_ENTRY     InInitializationOrderLinks;
+            LIST_ENTRY_T   InLoadOrderLinks;
+            LIST_ENTRY_T   InMemoryOrderLinks;
+            LIST_ENTRY_T   InInitializationOrderLinks;
             std::uintptr_t DllBase;
             std::uintptr_t EntryPoint;
             union {
                 unsigned long  SizeOfImage;
                 std::uintptr_t _dummy;
             };
-            UNICODE_STRING FullDllName;
-            UNICODE_STRING BaseDllName;
+            UNICODE_STRING_T FullDllName;
+            UNICODE_STRING_T BaseDllName;
 
             LAZY_IMPORTER_FORCEINLINE const LDR_DATA_TABLE_ENTRY_T*
                                             load_order_next() const noexcept
@@ -144,6 +152,149 @@ namespace li { namespace detail {
                 return reinterpret_cast<const LDR_DATA_TABLE_ENTRY_T*>(
                     InLoadOrderLinks.Flink);
             }
+        };
+
+        struct NT_TIB {
+            void*   ExceptionList;
+            void*   StackBase;
+            void*   StackLimit;
+            void*   SubSystemTib;
+            void*   FiberData;
+            void*   ArbitraryUserPointer;
+            NT_TIB* Self;
+        };
+
+        struct TEB {
+            void*  Reserved1[12];
+            PEB_T* ProcessEnvironmentBlock;
+        };
+
+        struct IMAGE_DOS_HEADER { // DOS .EXE header
+            std::uint16_t e_magic; // Magic number
+            std::uint16_t e_cblp; // Bytes on last page of file
+            std::uint16_t e_cp; // Pages in file
+            std::uint16_t e_crlc; // Relocations
+            std::uint16_t e_cparhdr; // Size of header in paragraphs
+            std::uint16_t e_minalloc; // Minimum extra paragraphs needed
+            std::uint16_t e_maxalloc; // Maximum extra paragraphs needed
+            std::uint16_t e_ss; // Initial (relative) SS value
+            std::uint16_t e_sp; // Initial SP value
+            std::uint16_t e_csum; // Checksum
+            std::uint16_t e_ip; // Initial IP value
+            std::uint16_t e_cs; // Initial (relative) CS value
+            std::uint16_t e_lfarlc; // File address of relocation table
+            std::uint16_t e_ovno; // Overlay number
+            std::uint16_t e_res[4]; // Reserved words
+            std::uint16_t e_oemid; // OEM identifier (for e_oeminfo)
+            std::uint16_t e_oeminfo; // OEM information; e_oemid specific
+            std::uint16_t e_res2[10]; // Reserved words
+            long     e_lfanew; // File address of new exe header
+        };
+
+        struct IMAGE_FILE_HEADER {
+            std::uint16_t      Machine;
+            std::uint16_t      NumberOfSections;
+            unsigned long TimeDateStamp;
+            unsigned long PointerToSymbolTable;
+            unsigned long NumberOfSymbols;
+            std::uint16_t      SizeOfOptionalHeader;
+            std::uint16_t      Characteristics;
+        };
+
+        struct IMAGE_EXPORT_DIRECTORY {
+            unsigned long Characteristics;
+            unsigned long TimeDateStamp;
+            std::uint16_t      MajorVersion;
+            std::uint16_t      MinorVersion;
+            unsigned long Name;
+            unsigned long Base;
+            unsigned long NumberOfFunctions;
+            unsigned long NumberOfNames;
+            unsigned long AddressOfFunctions; // RVA from base of image
+            unsigned long AddressOfNames; // RVA from base of image
+            unsigned long AddressOfNameOrdinals; // RVA from base of image
+        };
+
+        struct IMAGE_DATA_DIRECTORY {
+            unsigned long VirtualAddress;
+            unsigned long Size;
+        };
+
+        struct IMAGE_OPTIONAL_HEADER64 {
+            std::uint16_t             Magic;
+            std::uint8_t              MajorLinkerVersion;
+            std::uint8_t              MinorLinkerVersion;
+            unsigned long        SizeOfCode;
+            unsigned long        SizeOfInitializedData;
+            unsigned long        SizeOfUninitializedData;
+            unsigned long        AddressOfEntryPoint;
+            unsigned long        BaseOfCode;
+            std::uint64_t             ImageBase;
+            unsigned long        SectionAlignment;
+            unsigned long        FileAlignment;
+            std::uint16_t             MajorOperatingSystemVersion;
+            std::uint16_t             MinorOperatingSystemVersion;
+            std::uint16_t             MajorImageVersion;
+            std::uint16_t             MinorImageVersion;
+            std::uint16_t             MajorSubsystemVersion;
+            std::uint16_t             MinorSubsystemVersion;
+            unsigned long        Win32VersionValue;
+            unsigned long        SizeOfImage;
+            unsigned long        SizeOfHeaders;
+            unsigned long        CheckSum;
+            std::uint16_t             Subsystem;
+            std::uint16_t             DllCharacteristics;
+            std::uint64_t             SizeOfStackReserve;
+            std::uint64_t             SizeOfStackCommit;
+            std::uint64_t             SizeOfHeapReserve;
+            std::uint64_t             SizeOfHeapCommit;
+            unsigned long        LoaderFlags;
+            unsigned long        NumberOfRvaAndSizes;
+            IMAGE_DATA_DIRECTORY DataDirectory[16];
+        };
+
+        struct IMAGE_OPTIONAL_HEADER32 {
+            std::uint16_t             Magic;
+            std::uint8_t              MajorLinkerVersion;
+            std::uint8_t              MinorLinkerVersion;
+            unsigned long        SizeOfCode;
+            unsigned long        SizeOfInitializedData;
+            unsigned long        SizeOfUninitializedData;
+            unsigned long        AddressOfEntryPoint;
+            unsigned long        BaseOfCode;
+            unsigned long        BaseOfData;
+            unsigned long        ImageBase;
+            unsigned long        SectionAlignment;
+            unsigned long        FileAlignment;
+            std::uint16_t             MajorOperatingSystemVersion;
+            std::uint16_t             MinorOperatingSystemVersion;
+            std::uint16_t             MajorImageVersion;
+            std::uint16_t             MinorImageVersion;
+            std::uint16_t             MajorSubsystemVersion;
+            std::uint16_t             MinorSubsystemVersion;
+            unsigned long        Win32VersionValue;
+            unsigned long        SizeOfImage;
+            unsigned long        SizeOfHeaders;
+            unsigned long        CheckSum;
+            std::uint16_t             Subsystem;
+            std::uint16_t             DllCharacteristics;
+            unsigned long        SizeOfStackReserve;
+            unsigned long        SizeOfStackCommit;
+            unsigned long        SizeOfHeapReserve;
+            unsigned long        SizeOfHeapCommit;
+            unsigned long        LoaderFlags;
+            unsigned long        NumberOfRvaAndSizes;
+            IMAGE_DATA_DIRECTORY DataDirectory[16];
+        };
+
+        struct IMAGE_NT_HEADERS {
+            unsigned long     Signature;
+            IMAGE_FILE_HEADER FileHeader;
+#ifdef _WIN64
+            IMAGE_OPTIONAL_HEADER64 OptionalHeader;
+#else
+            IMAGE_OPTIONAL_HEADER32 OptionalHeader;
+#endif
         };
 
     } // namespace win
@@ -174,7 +325,8 @@ namespace li { namespace detail {
         return value;
     }
 
-    LAZY_IMPORTER_FORCEINLINE hash_t::value_type hash(const UNICODE_STRING& str) noexcept
+    LAZY_IMPORTER_FORCEINLINE hash_t::value_type
+                              hash(const win::UNICODE_STRING_T& str) noexcept
     {
         auto       first = str.Buffer;
         const auto last  = first + ((str.Length / sizeof(wchar_t)) - 4); // - ".dll"
@@ -205,13 +357,15 @@ namespace li { namespace detail {
 
 
     // some helper functions
-    LAZY_IMPORTER_FORCEINLINE const PEB* peb() noexcept
+    LAZY_IMPORTER_FORCEINLINE const win::PEB_T* peb() noexcept
     {
 #if defined(_WIN64)
-        return reinterpret_cast<const TEB*>(__readgsqword(offsetof(NT_TIB, Self)))
+        return reinterpret_cast<const win::TEB*>(
+                   __readgsqword(offsetof(win::NT_TIB, Self)))
             ->ProcessEnvironmentBlock;
 #elif defined(_WIN32)
-        return reinterpret_cast<const TEB*>(__readfsdword(offsetof(NT_TIB, Self)))
+        return reinterpret_cast<const win::TEB*>(
+                   __readfsdword(offsetof(win::NT_TIB, Self)))
             ->ProcessEnvironmentBlock;
 #else
 #error unsupported platform. Open an issues and I might add something for you.
@@ -223,17 +377,17 @@ namespace li { namespace detail {
         return reinterpret_cast<const win::PEB_LDR_DATA_T*>(peb()->Ldr);
     }
 
-    LAZY_IMPORTER_FORCEINLINE const IMAGE_NT_HEADERS*
+    LAZY_IMPORTER_FORCEINLINE const win::IMAGE_NT_HEADERS*
                                     nt_headers(std::uintptr_t base) noexcept
     {
-        return reinterpret_cast<const IMAGE_NT_HEADERS*>(
-            base + reinterpret_cast<const IMAGE_DOS_HEADER*>(base)->e_lfanew);
+        return reinterpret_cast<const win::IMAGE_NT_HEADERS*>(
+            base + reinterpret_cast<const win::IMAGE_DOS_HEADER*>(base)->e_lfanew);
     }
 
-    LAZY_IMPORTER_FORCEINLINE const IMAGE_EXPORT_DIRECTORY*
+    LAZY_IMPORTER_FORCEINLINE const win::IMAGE_EXPORT_DIRECTORY*
                                     image_export_dir(std::uintptr_t base) noexcept
     {
-        return reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(
+        return reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
             base + nt_headers(base)->OptionalHeader.DataDirectory->VirtualAddress);
     }
 
@@ -244,8 +398,8 @@ namespace li { namespace detail {
     }
 
     struct exports_directory {
-        std::uintptr_t                _base;
-        const IMAGE_EXPORT_DIRECTORY* _ied;
+        std::uintptr_t                     _base;
+        const win::IMAGE_EXPORT_DIRECTORY* _ied;
 #ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
         unsigned long _ied_size;
 #endif
@@ -277,7 +431,7 @@ namespace li { namespace detail {
         }
 
         LAZY_IMPORTER_FORCEINLINE std::uintptr_t base() const noexcept { return _base; }
-        LAZY_IMPORTER_FORCEINLINE const IMAGE_EXPORT_DIRECTORY* ied() const noexcept
+        LAZY_IMPORTER_FORCEINLINE const win::IMAGE_EXPORT_DIRECTORY* ied() const noexcept
         {
             return _ied;
         }
