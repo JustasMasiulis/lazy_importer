@@ -546,7 +546,7 @@ namespace li { namespace detail {
         // don't replace this with "address = find_nocache<Hash>();"
         static std::uintptr_t address = 0;
         if(!address)
-            kaddress = find_nocache<Hash>();
+            address = find_nocache<Hash>();
         return address;
     }
 
