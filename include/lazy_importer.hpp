@@ -412,7 +412,7 @@ namespace li { namespace detail {
         {
 #ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
             const auto ied_data_dir = nt_headers(base)->OptionalHeader.DataDirectory[0];
-            _ied                    = reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(
+            _ied                    = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
                 base + ied_data_dir.VirtualAddress);
             _ied_size = ied_data_dir.Size;
 #else
