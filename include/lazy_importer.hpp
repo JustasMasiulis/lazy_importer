@@ -80,6 +80,12 @@
 #define LI_NT_DEF_CACHED(name) \
     reinterpret_cast<name>(::li::detail::find_nt_cached<::li::detail::hash(#name)>())
 
+// returns dll base address or an infinite loop or crashes if it does not exist
+#define LI_MODULE(name) ::li::detail::module_handle<::li::detail::hash(name)>()
+
+// returns dll base address or nullptr if it does not exist
+#define LI_MODULE_SAFE(name) ::li::detail::module_handle_safe<::li::detail::hash(name)>();
+
 #include <utility>
 #include <cstdint>
 #include <cstddef>
@@ -188,24 +194,24 @@ namespace li { namespace detail {
             std::uint16_t e_oemid; // OEM identifier (for e_oeminfo)
             std::uint16_t e_oeminfo; // OEM information; e_oemid specific
             std::uint16_t e_res2[10]; // Reserved words
-            long     e_lfanew; // File address of new exe header
+            long          e_lfanew; // File address of new exe header
         };
 
         struct IMAGE_FILE_HEADER {
-            std::uint16_t      Machine;
-            std::uint16_t      NumberOfSections;
+            std::uint16_t Machine;
+            std::uint16_t NumberOfSections;
             unsigned long TimeDateStamp;
             unsigned long PointerToSymbolTable;
             unsigned long NumberOfSymbols;
-            std::uint16_t      SizeOfOptionalHeader;
-            std::uint16_t      Characteristics;
+            std::uint16_t SizeOfOptionalHeader;
+            std::uint16_t Characteristics;
         };
 
         struct IMAGE_EXPORT_DIRECTORY {
             unsigned long Characteristics;
             unsigned long TimeDateStamp;
-            std::uint16_t      MajorVersion;
-            std::uint16_t      MinorVersion;
+            std::uint16_t MajorVersion;
+            std::uint16_t MinorVersion;
             unsigned long Name;
             unsigned long Base;
             unsigned long NumberOfFunctions;
@@ -221,42 +227,42 @@ namespace li { namespace detail {
         };
 
         struct IMAGE_OPTIONAL_HEADER64 {
-            std::uint16_t             Magic;
-            std::uint8_t              MajorLinkerVersion;
-            std::uint8_t              MinorLinkerVersion;
+            std::uint16_t        Magic;
+            std::uint8_t         MajorLinkerVersion;
+            std::uint8_t         MinorLinkerVersion;
             unsigned long        SizeOfCode;
             unsigned long        SizeOfInitializedData;
             unsigned long        SizeOfUninitializedData;
             unsigned long        AddressOfEntryPoint;
             unsigned long        BaseOfCode;
-            std::uint64_t             ImageBase;
+            std::uint64_t        ImageBase;
             unsigned long        SectionAlignment;
             unsigned long        FileAlignment;
-            std::uint16_t             MajorOperatingSystemVersion;
-            std::uint16_t             MinorOperatingSystemVersion;
-            std::uint16_t             MajorImageVersion;
-            std::uint16_t             MinorImageVersion;
-            std::uint16_t             MajorSubsystemVersion;
-            std::uint16_t             MinorSubsystemVersion;
+            std::uint16_t        MajorOperatingSystemVersion;
+            std::uint16_t        MinorOperatingSystemVersion;
+            std::uint16_t        MajorImageVersion;
+            std::uint16_t        MinorImageVersion;
+            std::uint16_t        MajorSubsystemVersion;
+            std::uint16_t        MinorSubsystemVersion;
             unsigned long        Win32VersionValue;
             unsigned long        SizeOfImage;
             unsigned long        SizeOfHeaders;
             unsigned long        CheckSum;
-            std::uint16_t             Subsystem;
-            std::uint16_t             DllCharacteristics;
-            std::uint64_t             SizeOfStackReserve;
-            std::uint64_t             SizeOfStackCommit;
-            std::uint64_t             SizeOfHeapReserve;
-            std::uint64_t             SizeOfHeapCommit;
+            std::uint16_t        Subsystem;
+            std::uint16_t        DllCharacteristics;
+            std::uint64_t        SizeOfStackReserve;
+            std::uint64_t        SizeOfStackCommit;
+            std::uint64_t        SizeOfHeapReserve;
+            std::uint64_t        SizeOfHeapCommit;
             unsigned long        LoaderFlags;
             unsigned long        NumberOfRvaAndSizes;
             IMAGE_DATA_DIRECTORY DataDirectory[16];
         };
 
         struct IMAGE_OPTIONAL_HEADER32 {
-            std::uint16_t             Magic;
-            std::uint8_t              MajorLinkerVersion;
-            std::uint8_t              MinorLinkerVersion;
+            std::uint16_t        Magic;
+            std::uint8_t         MajorLinkerVersion;
+            std::uint8_t         MinorLinkerVersion;
             unsigned long        SizeOfCode;
             unsigned long        SizeOfInitializedData;
             unsigned long        SizeOfUninitializedData;
@@ -266,18 +272,18 @@ namespace li { namespace detail {
             unsigned long        ImageBase;
             unsigned long        SectionAlignment;
             unsigned long        FileAlignment;
-            std::uint16_t             MajorOperatingSystemVersion;
-            std::uint16_t             MinorOperatingSystemVersion;
-            std::uint16_t             MajorImageVersion;
-            std::uint16_t             MinorImageVersion;
-            std::uint16_t             MajorSubsystemVersion;
-            std::uint16_t             MinorSubsystemVersion;
+            std::uint16_t        MajorOperatingSystemVersion;
+            std::uint16_t        MinorOperatingSystemVersion;
+            std::uint16_t        MajorImageVersion;
+            std::uint16_t        MinorImageVersion;
+            std::uint16_t        MajorSubsystemVersion;
+            std::uint16_t        MinorSubsystemVersion;
             unsigned long        Win32VersionValue;
             unsigned long        SizeOfImage;
             unsigned long        SizeOfHeaders;
             unsigned long        CheckSum;
-            std::uint16_t             Subsystem;
-            std::uint16_t             DllCharacteristics;
+            std::uint16_t        Subsystem;
+            std::uint16_t        DllCharacteristics;
             unsigned long        SizeOfStackReserve;
             unsigned long        SizeOfStackCommit;
             unsigned long        SizeOfHeapReserve;
@@ -329,7 +335,7 @@ namespace li { namespace detail {
                               hash(const win::UNICODE_STRING_T& str) noexcept
     {
         auto       first = str.Buffer;
-        const auto last  = first + ((str.Length / sizeof(wchar_t)) - 4); // - ".dll"
+        const auto last  = first + (str.Length / sizeof(wchar_t));
         auto       value = hash_t::offset;
         for(; first != last; ++first)
             hash_t::single(value, static_cast<char>(*first));
@@ -412,7 +418,7 @@ namespace li { namespace detail {
         {
 #ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
             const auto ied_data_dir = nt_headers(base)->OptionalHeader.DataDirectory[0];
-            _ied                    = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
+            _ied = reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
                 base + ied_data_dir.VirtualAddress);
             _ied_size = ied_data_dir.Size;
 #else
@@ -465,6 +471,33 @@ namespace li { namespace detail {
     };
 
     template<hash_t::value_type Hash>
+    LAZY_IMPORTER_FORCEINLINE std::uintptr_t module_handle()
+    {
+        auto head = ldr_data_entry();
+        while(true) {
+            if(hash(head->BaseDllName) == Hash)
+                return head->DllBase;
+            head = head->load_order_next();
+        }
+    }
+
+    template<hash_t::value_type Hash>
+    LAZY_IMPORTER_FORCEINLINE std::uintptr_t module_handle_safe()
+    {
+        const auto head = ldr_data_entry();
+        auto       it   = head;
+        while(true) {
+            if(hash(head->BaseDllName) == Hash)
+                return head->DllBase;
+
+            if(it->InLoadOrderLinks.Flink == reinterpret_cast<std::uintptr_t>(head))
+                return 0;
+
+            it = it->load_order_next();
+        }
+    }
+
+    template<hash_t::value_type Hash>
     LAZY_IMPORTER_FORCEINLINE std::uintptr_t
                               find_in_module(std::uintptr_t module_base) noexcept
     {
@@ -499,7 +532,9 @@ namespace li { namespace detail {
         LAZY_IMPORTER_FORCEINLINE bool
         operator()(const win::LDR_DATA_TABLE_ENTRY_T* module) const noexcept
         {
-            return hash(module->BaseDllName) == _hash;
+            auto name = module->BaseDllName;
+            name.Length -= 8; // .dll
+            return hash(name) == _hash;
         }
     };
 
