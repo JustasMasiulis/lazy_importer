@@ -82,7 +82,7 @@
 #define LI_MODULE(name) ::li::detail::module_handle<::li::detail::hash(name)>()
 
 // returns dll base address or nullptr if it does not exist
-#define LI_MODULE_SAFE(name) ::li::detail::module_handle_safe<::li::detail::hash(name)>();
+#define LI_MODULE_SAFE(name) ::li::detail::module_handle_safe<::li::detail::hash(name)>()
 
 #define offsetof(st, m) ((size_t) & (((st*)0)->m))
 #include <intrin.h>
