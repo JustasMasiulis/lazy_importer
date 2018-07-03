@@ -25,8 +25,6 @@
 
 // define LAZY_IMPORTER_CASE_INSENSITIVE to enable case insensitive comparisons
 
-// define LAZY_IMPORTER_WINDOWS_INCLUDE_DIR with your files include path
-// not to use <Windows.h> and <Winternl.h>
 
 // DEF functions are for use with typedefs
 // non DEF functions are for use with function pointers
@@ -86,9 +84,7 @@
 // returns dll base address or nullptr if it does not exist
 #define LI_MODULE_SAFE(name) ::li::detail::module_handle_safe<::li::detail::hash(name)>();
 
-#include <utility>
-#include <cstdint>
-#include <cstddef>
+#define offsetof(st, m) ((size_t) & (((st*)0)->m))
 #include <intrin.h>
 
 #ifndef LAZY_IMPORTER_NO_FORCEINLINE
@@ -111,11 +107,17 @@
 
 namespace li { namespace detail {
 
+    template<class First, class Second>
+    struct pair {
+        First  first;
+        Second second;
+    };
+
     namespace win {
 
         struct LIST_ENTRY_T {
-            std::uintptr_t Flink;
-            std::uintptr_t Blink;
+            const char* Flink;
+            const char* Blink;
         };
 
         struct UNICODE_STRING_T {
@@ -125,29 +127,29 @@ namespace li { namespace detail {
         };
 
         struct PEB_LDR_DATA_T {
-            unsigned long  Length;
-            unsigned long  Initialized;
-            std::uintptr_t SsHandle;
-            LIST_ENTRY_T   InLoadOrderModuleList;
+            unsigned long Length;
+            unsigned long Initialized;
+            const char*   SsHandle;
+            LIST_ENTRY_T  InLoadOrderModuleList;
         };
 
         struct PEB_T {
             unsigned char   Reserved1[2];
             unsigned char   BeingDebugged;
             unsigned char   Reserved2[1];
-            std::uintptr_t  Reserved3[2];
+            const char*     Reserved3[2];
             PEB_LDR_DATA_T* Ldr;
         };
 
         struct LDR_DATA_TABLE_ENTRY_T {
-            LIST_ENTRY_T   InLoadOrderLinks;
-            LIST_ENTRY_T   InMemoryOrderLinks;
-            LIST_ENTRY_T   InInitializationOrderLinks;
-            std::uintptr_t DllBase;
-            std::uintptr_t EntryPoint;
+            LIST_ENTRY_T InLoadOrderLinks;
+            LIST_ENTRY_T InMemoryOrderLinks;
+            LIST_ENTRY_T InInitializationOrderLinks;
+            const char*  DllBase;
+            const char*  EntryPoint;
             union {
-                unsigned long  SizeOfImage;
-                std::uintptr_t _dummy;
+                unsigned long SizeOfImage;
+                const char*   _dummy;
             };
             UNICODE_STRING_T FullDllName;
             UNICODE_STRING_T BaseDllName;
@@ -176,49 +178,49 @@ namespace li { namespace detail {
         };
 
         struct IMAGE_DOS_HEADER { // DOS .EXE header
-            std::uint16_t e_magic; // Magic number
-            std::uint16_t e_cblp; // Bytes on last page of file
-            std::uint16_t e_cp; // Pages in file
-            std::uint16_t e_crlc; // Relocations
-            std::uint16_t e_cparhdr; // Size of header in paragraphs
-            std::uint16_t e_minalloc; // Minimum extra paragraphs needed
-            std::uint16_t e_maxalloc; // Maximum extra paragraphs needed
-            std::uint16_t e_ss; // Initial (relative) SS value
-            std::uint16_t e_sp; // Initial SP value
-            std::uint16_t e_csum; // Checksum
-            std::uint16_t e_ip; // Initial IP value
-            std::uint16_t e_cs; // Initial (relative) CS value
-            std::uint16_t e_lfarlc; // File address of relocation table
-            std::uint16_t e_ovno; // Overlay number
-            std::uint16_t e_res[4]; // Reserved words
-            std::uint16_t e_oemid; // OEM identifier (for e_oeminfo)
-            std::uint16_t e_oeminfo; // OEM information; e_oemid specific
-            std::uint16_t e_res2[10]; // Reserved words
-            long          e_lfanew; // File address of new exe header
+            unsigned short e_magic; // Magic number
+            unsigned short e_cblp; // Bytes on last page of file
+            unsigned short e_cp; // Pages in file
+            unsigned short e_crlc; // Relocations
+            unsigned short e_cparhdr; // Size of header in paragraphs
+            unsigned short e_minalloc; // Minimum extra paragraphs needed
+            unsigned short e_maxalloc; // Maximum extra paragraphs needed
+            unsigned short e_ss; // Initial (relative) SS value
+            unsigned short e_sp; // Initial SP value
+            unsigned short e_csum; // Checksum
+            unsigned short e_ip; // Initial IP value
+            unsigned short e_cs; // Initial (relative) CS value
+            unsigned short e_lfarlc; // File address of relocation table
+            unsigned short e_ovno; // Overlay number
+            unsigned short e_res[4]; // Reserved words
+            unsigned short e_oemid; // OEM identifier (for e_oeminfo)
+            unsigned short e_oeminfo; // OEM information; e_oemid specific
+            unsigned short e_res2[10]; // Reserved words
+            long           e_lfanew; // File address of new exe header
         };
 
         struct IMAGE_FILE_HEADER {
-            std::uint16_t Machine;
-            std::uint16_t NumberOfSections;
-            unsigned long TimeDateStamp;
-            unsigned long PointerToSymbolTable;
-            unsigned long NumberOfSymbols;
-            std::uint16_t SizeOfOptionalHeader;
-            std::uint16_t Characteristics;
+            unsigned short Machine;
+            unsigned short NumberOfSections;
+            unsigned long  TimeDateStamp;
+            unsigned long  PointerToSymbolTable;
+            unsigned long  NumberOfSymbols;
+            unsigned short SizeOfOptionalHeader;
+            unsigned short Characteristics;
         };
 
         struct IMAGE_EXPORT_DIRECTORY {
-            unsigned long Characteristics;
-            unsigned long TimeDateStamp;
-            std::uint16_t MajorVersion;
-            std::uint16_t MinorVersion;
-            unsigned long Name;
-            unsigned long Base;
-            unsigned long NumberOfFunctions;
-            unsigned long NumberOfNames;
-            unsigned long AddressOfFunctions; // RVA from base of image
-            unsigned long AddressOfNames; // RVA from base of image
-            unsigned long AddressOfNameOrdinals; // RVA from base of image
+            unsigned long  Characteristics;
+            unsigned long  TimeDateStamp;
+            unsigned short MajorVersion;
+            unsigned short MinorVersion;
+            unsigned long  Name;
+            unsigned long  Base;
+            unsigned long  NumberOfFunctions;
+            unsigned long  NumberOfNames;
+            unsigned long  AddressOfFunctions; // RVA from base of image
+            unsigned long  AddressOfNames; // RVA from base of image
+            unsigned long  AddressOfNameOrdinals; // RVA from base of image
         };
 
         struct IMAGE_DATA_DIRECTORY {
@@ -227,42 +229,42 @@ namespace li { namespace detail {
         };
 
         struct IMAGE_OPTIONAL_HEADER64 {
-            std::uint16_t        Magic;
-            std::uint8_t         MajorLinkerVersion;
-            std::uint8_t         MinorLinkerVersion;
+            unsigned short       Magic;
+            unsigned char        MajorLinkerVersion;
+            unsigned char        MinorLinkerVersion;
             unsigned long        SizeOfCode;
             unsigned long        SizeOfInitializedData;
             unsigned long        SizeOfUninitializedData;
             unsigned long        AddressOfEntryPoint;
             unsigned long        BaseOfCode;
-            std::uint64_t        ImageBase;
+            unsigned long long   ImageBase;
             unsigned long        SectionAlignment;
             unsigned long        FileAlignment;
-            std::uint16_t        MajorOperatingSystemVersion;
-            std::uint16_t        MinorOperatingSystemVersion;
-            std::uint16_t        MajorImageVersion;
-            std::uint16_t        MinorImageVersion;
-            std::uint16_t        MajorSubsystemVersion;
-            std::uint16_t        MinorSubsystemVersion;
+            unsigned short       MajorOperatingSystemVersion;
+            unsigned short       MinorOperatingSystemVersion;
+            unsigned short       MajorImageVersion;
+            unsigned short       MinorImageVersion;
+            unsigned short       MajorSubsystemVersion;
+            unsigned short       MinorSubsystemVersion;
             unsigned long        Win32VersionValue;
             unsigned long        SizeOfImage;
             unsigned long        SizeOfHeaders;
             unsigned long        CheckSum;
-            std::uint16_t        Subsystem;
-            std::uint16_t        DllCharacteristics;
-            std::uint64_t        SizeOfStackReserve;
-            std::uint64_t        SizeOfStackCommit;
-            std::uint64_t        SizeOfHeapReserve;
-            std::uint64_t        SizeOfHeapCommit;
+            unsigned short       Subsystem;
+            unsigned short       DllCharacteristics;
+            unsigned long long   SizeOfStackReserve;
+            unsigned long long   SizeOfStackCommit;
+            unsigned long long   SizeOfHeapReserve;
+            unsigned long long   SizeOfHeapCommit;
             unsigned long        LoaderFlags;
             unsigned long        NumberOfRvaAndSizes;
             IMAGE_DATA_DIRECTORY DataDirectory[16];
         };
 
         struct IMAGE_OPTIONAL_HEADER32 {
-            std::uint16_t        Magic;
-            std::uint8_t         MajorLinkerVersion;
-            std::uint8_t         MinorLinkerVersion;
+            unsigned short       Magic;
+            unsigned char        MajorLinkerVersion;
+            unsigned char        MinorLinkerVersion;
             unsigned long        SizeOfCode;
             unsigned long        SizeOfInitializedData;
             unsigned long        SizeOfUninitializedData;
@@ -272,18 +274,18 @@ namespace li { namespace detail {
             unsigned long        ImageBase;
             unsigned long        SectionAlignment;
             unsigned long        FileAlignment;
-            std::uint16_t        MajorOperatingSystemVersion;
-            std::uint16_t        MinorOperatingSystemVersion;
-            std::uint16_t        MajorImageVersion;
-            std::uint16_t        MinorImageVersion;
-            std::uint16_t        MajorSubsystemVersion;
-            std::uint16_t        MinorSubsystemVersion;
+            unsigned short       MajorOperatingSystemVersion;
+            unsigned short       MinorOperatingSystemVersion;
+            unsigned short       MajorImageVersion;
+            unsigned short       MinorImageVersion;
+            unsigned short       MajorSubsystemVersion;
+            unsigned short       MinorSubsystemVersion;
             unsigned long        Win32VersionValue;
             unsigned long        SizeOfImage;
             unsigned long        SizeOfHeaders;
             unsigned long        CheckSum;
-            std::uint16_t        Subsystem;
-            std::uint16_t        DllCharacteristics;
+            unsigned short       Subsystem;
+            unsigned short       DllCharacteristics;
             unsigned long        SizeOfStackReserve;
             unsigned long        SizeOfStackCommit;
             unsigned long        SizeOfHeapReserve;
@@ -307,7 +309,7 @@ namespace li { namespace detail {
 
     // hashing stuff
     struct hash_t {
-        using value_type                   = std::uint32_t;
+        using value_type                   = unsigned long;
         constexpr static value_type offset = 2166136261;
         constexpr static value_type prime  = 16777619;
 
@@ -316,7 +318,7 @@ namespace li { namespace detail {
         {
             value = static_cast<hash_t::value_type>(
                 (value ^ LAZY_IMPORTER_TOLOWER(c)) *
-                static_cast<std::uint64_t>(hash_t::prime));
+                static_cast<unsigned long long>(hash_t::prime));
         }
     };
 
@@ -343,10 +345,10 @@ namespace li { namespace detail {
         return value;
     }
 
-    LAZY_IMPORTER_FORCEINLINE std::pair<hash_t::value_type, hash_t::value_type>
+    LAZY_IMPORTER_FORCEINLINE pair<hash_t::value_type, hash_t::value_type>
                               hash_forwarded(const char* str) noexcept
     {
-        std::pair<hash_t::value_type, hash_t::value_type> module_and_function{
+        pair<hash_t::value_type, hash_t::value_type> module_and_function{
             hash_t::offset, hash_t::offset
         };
 
@@ -384,14 +386,14 @@ namespace li { namespace detail {
     }
 
     LAZY_IMPORTER_FORCEINLINE const win::IMAGE_NT_HEADERS*
-                                    nt_headers(std::uintptr_t base) noexcept
+                                    nt_headers(const char* base) noexcept
     {
         return reinterpret_cast<const win::IMAGE_NT_HEADERS*>(
             base + reinterpret_cast<const win::IMAGE_DOS_HEADER*>(base)->e_lfanew);
     }
 
     LAZY_IMPORTER_FORCEINLINE const win::IMAGE_EXPORT_DIRECTORY*
-                                    image_export_dir(std::uintptr_t base) noexcept
+                                    image_export_dir(const char* base) noexcept
     {
         return reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
             base + nt_headers(base)->OptionalHeader.DataDirectory->VirtualAddress);
@@ -404,7 +406,7 @@ namespace li { namespace detail {
     }
 
     struct exports_directory {
-        std::uintptr_t                     _base;
+        const char*                        _base;
         const win::IMAGE_EXPORT_DIRECTORY* _ied;
 #ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
         unsigned long _ied_size;
@@ -414,7 +416,7 @@ namespace li { namespace detail {
         using size_type = unsigned long;
 
         LAZY_IMPORTER_FORCEINLINE
-        exports_directory(std::uintptr_t base) noexcept : _base(base)
+        exports_directory(const char* base) noexcept : _base(base)
         {
 #ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
             const auto ied_data_dir = nt_headers(base)->OptionalHeader.DataDirectory[0];
@@ -428,7 +430,7 @@ namespace li { namespace detail {
 
         LAZY_IMPORTER_FORCEINLINE explicit operator bool() const noexcept
         {
-            return reinterpret_cast<std::uintptr_t>(_ied) != _base;
+            return reinterpret_cast<const char*>(_ied) != _base;
         }
 
         LAZY_IMPORTER_FORCEINLINE size_type size() const noexcept
@@ -436,7 +438,7 @@ namespace li { namespace detail {
             return _ied->NumberOfNames;
         }
 
-        LAZY_IMPORTER_FORCEINLINE std::uintptr_t base() const noexcept { return _base; }
+        LAZY_IMPORTER_FORCEINLINE const char* base() const noexcept { return _base; }
         LAZY_IMPORTER_FORCEINLINE const win::IMAGE_EXPORT_DIRECTORY* ied() const noexcept
         {
             return _ied;
@@ -449,7 +451,7 @@ namespace li { namespace detail {
                             _base + _ied->AddressOfNames)[index]);
         }
 
-        LAZY_IMPORTER_FORCEINLINE std::uintptr_t address(size_type index) const noexcept
+        LAZY_IMPORTER_FORCEINLINE const char* address(size_type index) const noexcept
         {
             const auto* const rva_table =
                 reinterpret_cast<const unsigned long*>(_base + _ied->AddressOfFunctions);
@@ -461,17 +463,17 @@ namespace li { namespace detail {
         }
 
 #ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
-        LAZY_IMPORTER_FORCEINLINE bool is_forwarded(std::uintptr_t export_address) const
+        LAZY_IMPORTER_FORCEINLINE bool is_forwarded(const char* export_address) const
             noexcept
         {
-            const auto ui_ied = reinterpret_cast<std::uintptr_t>(_ied);
+            const auto ui_ied = reinterpret_cast<const char*>(_ied);
             return (export_address > ui_ied && export_address < ui_ied + _ied_size);
         }
 #endif
     };
 
     template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE std::uintptr_t module_handle()
+    LAZY_IMPORTER_FORCEINLINE const char* module_handle()
     {
         auto head = ldr_data_entry();
         while(true) {
@@ -482,7 +484,7 @@ namespace li { namespace detail {
     }
 
     template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE std::uintptr_t module_handle_safe()
+    LAZY_IMPORTER_FORCEINLINE const char* module_handle_safe()
     {
         const auto head = ldr_data_entry();
         auto       it   = head;
@@ -490,7 +492,7 @@ namespace li { namespace detail {
             if(hash(head->BaseDllName) == Hash)
                 return head->DllBase;
 
-            if(it->InLoadOrderLinks.Flink == reinterpret_cast<std::uintptr_t>(head))
+            if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
                 return 0;
 
             it = it->load_order_next();
@@ -498,8 +500,7 @@ namespace li { namespace detail {
     }
 
     template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE std::uintptr_t
-                              find_in_module(std::uintptr_t module_base) noexcept
+    LAZY_IMPORTER_FORCEINLINE const char* find_in_module(const char* module_base) noexcept
     {
         const exports_directory exports(module_base);
 
@@ -511,7 +512,7 @@ namespace li { namespace detail {
     }
 
     template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nt() noexcept
+    LAZY_IMPORTER_FORCEINLINE const char* find_nt() noexcept
     {
         // load the next entry which will be ntdll
         const auto* const head = ldr_data_entry()->load_order_next();
@@ -539,14 +540,14 @@ namespace li { namespace detail {
     };
 
     template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nocache() noexcept
+    LAZY_IMPORTER_FORCEINLINE const char* find_nocache() noexcept
     {
         return find_nocache(Hash, allow_all_modules{});
     }
 
     template<class ModuleFilter = allow_all_modules>
-    LAZY_IMPORTER_FORCEINLINE std::uintptr_t
-                              find_nocache(hash_t::value_type function_hash, ModuleFilter module_filter) noexcept
+    LAZY_IMPORTER_FORCEINLINE const char*
+    find_nocache(hash_t::value_type function_hash, ModuleFilter module_filter) noexcept
     {
         const auto* head = ldr_data_entry();
 
@@ -576,19 +577,19 @@ namespace li { namespace detail {
     }
 
     template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_cached() noexcept
+    LAZY_IMPORTER_FORCEINLINE const char* find_cached() noexcept
     {
         // don't replace this with "address = find_nocache<Hash>();"
-        static std::uintptr_t address = 0;
+        static const char* address = 0;
         if(!address)
             address = find_nocache<Hash>();
         return address;
     }
 
     template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE std::uintptr_t find_nt_cached() noexcept
+    LAZY_IMPORTER_FORCEINLINE const char* find_nt_cached() noexcept
     {
-        static std::uintptr_t address = 0;
+        static const char* address = 0;
         if(!address)
             address = find_nt<Hash>();
         return address;
