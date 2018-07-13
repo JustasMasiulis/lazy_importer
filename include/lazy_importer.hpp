@@ -84,7 +84,7 @@
 // returns dll base address or nullptr if it does not exist
 #define LI_MODULE_SAFE(name) ::li::detail::module_handle_safe<::li::detail::hash(name)>()
 
-#define offsetof(st, m) ((size_t) & (((st*)0)->m))
+#include <cstddef>
 #include <intrin.h>
 
 #ifndef LAZY_IMPORTER_NO_FORCEINLINE
