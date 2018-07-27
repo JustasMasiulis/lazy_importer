@@ -43,16 +43,16 @@
 // can be used for any function. Prefer for functions that you call rarely.
 #define LI_FIND(name)                  \
     reinterpret_cast<decltype(&name)>( \
-        ::li::detail::find_nocache<::li::detail::hash(#name)>())
+        ::li::detail::find_nocache<::li::detail::khash(#name)>())
 #define LI_FIND_DEF(name) \
-    reinterpret_cast<name>(::li::detail::find_nocache<::li::detail::hash(#name)>())
+    reinterpret_cast<name>(::li::detail::find_nocache<::li::detail::khash(#name)>())
 
 // can be used for any function. Prefer for functions that you call often.
 #define LI_FIND_CACHED(name)           \
     reinterpret_cast<decltype(&name)>( \
-        ::li::detail::find_cached<::li::detail::hash(#name)>())
+        ::li::detail::find_cached<::li::detail::khash(#name)>())
 #define LI_FIND_DEF_CACHED(name) \
-    reinterpret_cast<name>(::li::detail::find_cached<::li::detail::hash(#name)>())
+    reinterpret_cast<name>(::li::detail::find_cached<::li::detail::khash(#name)>())
 
 // can be used for any function in provided module.
 // There is no cached version because there might be functions with the same
@@ -60,29 +60,29 @@
 // it yourself
 #define LI_GET(module_base, name)      \
     reinterpret_cast<decltype(&name)>( \
-        ::li::detail::find_in_module<::li::detail::hash(#name)>(module_base))
+        ::li::detail::find_in_module<::li::detail::khash(#name)>(module_base))
 #define LI_GET_DEF(module_base, name) \
     reinterpret_cast<name>(           \
-        ::li::detail::find_in_module<::li::detail::hash(#name)>(module_base))
+        ::li::detail::find_in_module<::li::detail::khash(#name)>(module_base))
 
 // can be used for ntdll exports. Prefer for functions that you call rarely.
 #define LI_NT(name) \
-    reinterpret_cast<decltype(&name)>(::li::detail::find_nt<::li::detail::hash(#name)>())
+    reinterpret_cast<decltype(&name)>(::li::detail::find_nt<::li::detail::khash(#name)>())
 #define LI_NT_DEF(name) \
-    reinterpret_cast<name>(::li::detail::find_nt<::li::detail::hash(#name)>())
+    reinterpret_cast<name>(::li::detail::find_nt<::li::detail::khash(#name)>())
 
 // can be used for ntdll exports. Prefer for functions that you call often.
 #define LI_NT_CACHED(name)             \
     reinterpret_cast<decltype(&name)>( \
-        ::li::detail::find_nt_cached<::li::detail::hash(#name)>())
+        ::li::detail::find_nt_cached<::li::detail::khash(#name)>())
 #define LI_NT_DEF_CACHED(name) \
-    reinterpret_cast<name>(::li::detail::find_nt_cached<::li::detail::hash(#name)>())
+    reinterpret_cast<name>(::li::detail::find_nt_cached<::li::detail::khash(#name)>())
 
 // returns dll base address or an infinite loop or crashes if it does not exist
-#define LI_MODULE(name) ::li::detail::module_handle<::li::detail::hash(name)>()
+#define LI_MODULE(name) ::li::detail::module_handle<::li::detail::khash(name)>()
 
 // returns dll base address or nullptr if it does not exist
-#define LI_MODULE_SAFE(name) ::li::detail::module_handle_safe<::li::detail::hash(name)>()
+#define LI_MODULE_SAFE(name) ::li::detail::module_handle_safe<::li::detail::khash(name)>()
 
 #include <cstddef>
 #include <intrin.h>
@@ -312,24 +312,32 @@ namespace li { namespace detail {
         using value_type                   = unsigned long;
         constexpr static value_type offset = 2166136261;
         constexpr static value_type prime  = 16777619;
+        constexpr static unsigned long long prime64 = prime;
 
-        LAZY_IMPORTER_FORCEINLINE constexpr static void single(value_type& value,
-                                                               char        c) noexcept
+        LAZY_IMPORTER_FORCEINLINE constexpr static value_type single(value_type value,
+                                                                     char       c) noexcept
         {
-            value = static_cast<hash_t::value_type>(
-                (value ^ LAZY_IMPORTER_TOLOWER(c)) *
-                static_cast<unsigned long long>(hash_t::prime));
+            return static_cast<hash_t::value_type>((value ^ LAZY_IMPORTER_TOLOWER(c)) *
+                       static_cast<unsigned long long>(prime));
         }
     };
 
     template<class CharT = char>
-    LAZY_IMPORTER_FORCEINLINE constexpr hash_t::value_type hash(const CharT* str) noexcept
+    LAZY_IMPORTER_FORCEINLINE constexpr hash_t::value_type khash(const CharT* str, hash_t::value_type value = hash_t::offset) noexcept
     {
-        // casts needed to get rid of warnings
-        auto value = hash_t::offset;
-        for(CharT c = *str; c; c = *++str)
-            hash_t::single(value, c);
+        return (*str ? khash(str + 1, hash_t::single(value, *str)) : value);
+    }
 
+    template<class CharT = char>
+    LAZY_IMPORTER_FORCEINLINE hash_t::value_type hash(const CharT* str) noexcept
+    {
+        hash_t::value_type value = hash_t::offset;
+
+        for(;;) {
+            char c = *str++;
+            if(!c) break;
+            value = hash_t::single(value, c);
+        }
         return value;
     }
 
