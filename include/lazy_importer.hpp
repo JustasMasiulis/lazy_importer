@@ -309,21 +309,23 @@ namespace li { namespace detail {
 
     // hashing stuff
     struct hash_t {
-        using value_type                   = unsigned long;
-        constexpr static value_type offset = 2166136261;
-        constexpr static value_type prime  = 16777619;
+        using value_type                            = unsigned long;
+        constexpr static value_type         offset  = 2166136261;
+        constexpr static value_type         prime   = 16777619;
         constexpr static unsigned long long prime64 = prime;
 
         LAZY_IMPORTER_FORCEINLINE constexpr static value_type single(value_type value,
-                                                                     char       c) noexcept
+                                                                     char c) noexcept
         {
-            return static_cast<hash_t::value_type>((value ^ LAZY_IMPORTER_TOLOWER(c)) *
-                       static_cast<unsigned long long>(prime));
+            return static_cast<hash_t::value_type>(
+                (value ^ LAZY_IMPORTER_TOLOWER(c)) *
+                static_cast<unsigned long long>(prime));
         }
     };
 
     template<class CharT = char>
-    LAZY_IMPORTER_FORCEINLINE constexpr hash_t::value_type khash(const CharT* str, hash_t::value_type value = hash_t::offset) noexcept
+    LAZY_IMPORTER_FORCEINLINE constexpr hash_t::value_type
+    khash(const CharT* str, hash_t::value_type value = hash_t::offset) noexcept
     {
         return (*str ? khash(str + 1, hash_t::single(value, *str)) : value);
     }
@@ -335,7 +337,8 @@ namespace li { namespace detail {
 
         for(;;) {
             char c = *str++;
-            if(!c) break;
+            if(!c)
+                break;
             value = hash_t::single(value, c);
         }
         return value;
@@ -348,7 +351,7 @@ namespace li { namespace detail {
         const auto last  = first + (str.Length / sizeof(wchar_t));
         auto       value = hash_t::offset;
         for(; first != last; ++first)
-            hash_t::single(value, static_cast<char>(*first));
+            value = hash_t::single(value, static_cast<char>(*first));
 
         return value;
     }
@@ -497,7 +500,7 @@ namespace li { namespace detail {
         const auto head = ldr_data_entry();
         auto       it   = head;
         while(true) {
-            if(hash(head->BaseDllName) == Hash)
+            if(hash(it->BaseDllName) == Hash)
                 return head->DllBase;
 
             if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
