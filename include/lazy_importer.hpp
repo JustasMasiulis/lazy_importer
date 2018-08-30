@@ -501,7 +501,7 @@ namespace li { namespace detail {
         auto       it   = head;
         while(true) {
             if(hash(it->BaseDllName) == Hash)
-                return head->DllBase;
+                return it->DllBase;
 
             if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
                 return 0;
