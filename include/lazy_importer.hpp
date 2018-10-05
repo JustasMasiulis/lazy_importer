@@ -96,7 +96,7 @@
 #define LAZY_IMPORTER_FORCEINLINE inline
 #endif
 #else
-#define LAZY_IMPORTER_INLINE inline
+#define LAZY_IMPORTER_FORCEINLINE inline
 #endif
 
 #ifdef LAZY_IMPORTER_CASE_INSENSITIVE
