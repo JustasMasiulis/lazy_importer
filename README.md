@@ -76,6 +76,7 @@ Macros:
 Types:
 
 **lazy_module**
+
 | function                 | explanation                                                                  |
 |--------------------------|------------------------------------------------------------------------------|
 | `get<T = void*>`         | returns address of module. If module does not exist behavior is not defined. |
