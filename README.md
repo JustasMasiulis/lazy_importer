@@ -3,7 +3,8 @@ A simple and easy to use header only library to make the life of a reverse engin
 
 ## Small example
 ```cpp
-LI_FIND(MessageBoxA)(nullptr, "hello world", nullptr, 0);
+LI_FN(MessageBoxA).get()(nullptr, "hello world", nullptr, 0);
+LI_FN(VirtualProtect).in(LI_MODULE("kernel32.dll").cached());
 ```
 
 ## Features
@@ -67,31 +68,31 @@ LABEL_9:
 ```
 
 ## Documentation
-lazy importer exposes 4 rather self explanatory macros with multiple "overloads".
+Macros:
+* LI_FN(function_pointer) -> lazy_function
+* LI_FN_DEF(function_type) -> lazy_function
+* LI_MODULE(module_name) -> lazy_module
 
-`LI_FIND[_DEF][_CACHED](function)`
-Iterates trough all modules and their exports.
+Types:
 
-`LI_NT[_DEF][_CACHED](function)`
-Iterates trough `ntdll.dll` exports.
+**lazy_module**
+| function                 | explanation                                                                  |
+|--------------------------|------------------------------------------------------------------------------|
+| `get<T = void*>`         | returns address of module. If module does not exist behavior is not defined. |
+| `safe<T = void*>`        | returns address of module. If module does not exist returns 0.               |
+| `cached<T = void*>`      | same as get except the result is cached.                                     |
+| `safe_cached<T = void*>` | same as safe except the result is cached.                                    |
 
-`LI_GET[_DEF](module_base_address, function)`
-Iterates trough exports of given module.
+**lazy_function**
+shares API with lazy_module except it returns the address of function with these additions:
+* `forwarded`, `forwarded_safe`, `forwarded_cached`, `forwarded_safe_cached` offering same functionality as `get` with the addition of ability to resolve forwarded exports.
+* `in`, `in_safe`, `in_cached`, `in_safe_cached` offering same functionality as `get` with the addition of ability to pass in the base of module in which to search.
+* `nt`, `nt_safe`, `nt_cached`, `nt_safe_cached` offering same functionality as `in`, but using the `ntdll.dll` base.
 
-`LI_MODULE(module_name_string)`
-Finds module base address, behaviour is undefined if module is not found.
-
-`LI_MODULE_SAFE(module_name_string)`
-Finds module base address, returns null if module is not found.
-
-* If macro name contains "_DEF" the expected parameter "function" is a typedef/alias, otherwise a function pointer.
-* If macro name contains "_CACHED" a static variable will be used to store the function pointer for fast access in subsequent calls. Note that for each hash there is a separate static variable.
-
-None of these functions throw exceptions and are linear in complexity.
 
 ## Extra configuration
 define LAZY_IMPORTER_NO_FORCEINLINE to disable force inlining.
 
 define LAZY_IMPORTER_CASE_INSENSITIVE to enable case insensitive comparisons.
 
-define LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS to enable resolution of forwarded exports. IMPORTANT: LAZY_IMPORTER_CASE_INSENSITIVE might be necessary for this option to function properly.
+define LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS to enable resolution of forwarded exports by default. IMPORTANT: LAZY_IMPORTER_CASE_INSENSITIVE might be necessary for this option to function properly.
