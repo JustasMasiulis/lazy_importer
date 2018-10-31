@@ -483,66 +483,50 @@ namespace li { namespace detail {
 #endif
     };
 
-    struct safe_module_iterator {
+    struct safe_module_enumerator {
         using value_type = const detail::win::LDR_DATA_TABLE_ENTRY_T;
-        value_type* it;
+        value_type* value;
         value_type* head;
+
+        safe_module_enumerator() { value = head = ldr_data_entry(); }
+
+        LAZY_IMPORTER_FORCEINLINE void reset() noexcept { value = _head; }
 
         LAZY_IMPORTER_FORCEINLINE safe_module_iterator& operator++() const noexcept
         {
-            if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
-                it = nullptr;
-            else
-                it = it->load_order_next();
+            value = value->load_order_next();
             return *this;
         }
 
-        LAZY_IMPORTER_FORCEINLINE bool operator!=(const safe_module_iterator&) const
-            noexcept
+        LAZY_IMPORTER_FORCEINLINE bool done() const noexcept
         {
-            return it != nullptr;
+            return value->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head);
         }
     };
 
-    struct unsafe_module_iterator {
-        const detail::win::LDR_DATA_TABLE_ENTRY_T* it;
+    struct unsafe_module_enumerator {
+        using value_type = const detail::win::LDR_DATA_TABLE_ENTRY_T*;
+        value_type value;
+
+        LAZY_IMPORTER_FORCEINLINE unsafe_module_iterator() noexcept
+            : value(ldr_data_entry())
+        {}
+
+        LAZY_IMPORTER_FORCEINLINE void reset() noexcept { value = ldr_data_entry(); }
+
 
         LAZY_IMPORTER_FORCEINLINE unsafe_module_iterator& operator++() const noexcept
         {
-            it = it->load_order_next();
+            value = value->load_order_next();
             return *this;
         }
 
-        LAZY_IMPORTER_FORCEINLINE bool operator!=(const unsafe_module_iterator&) const
-            noexcept
-        {
-            return true;
-        }
+        LAZY_IMPORTER_FORCEINLIEN static bool done() noexcept { return false; }
     };
-
-    struct unsafe_modules_range {
-        LAZY_IMPORTER_FORCEINLINE unsafe_module_iterator begin() const noexcept
-        {
-            return { ldr_data_entry() };
-        }
-        LAZY_IMPORTER_FORCEINLINE unsafe_module_iterator end() const noexcept
-        {
-            return {};
-        }
-    };
-    struct safe_modules_range {
-        LAZY_IMPORTER_FORCEINLINE safe_module_iterator begin() const noexcept
-        {
-            const auto ldr = ldr_data_entry();
-            return { ldr, ldr };
-        }
-        LAZY_IMPORTER_FORCEINLINE safe_module_iterator end() const noexcept { return {}; }
-    };
-
 
     // provides the cached functions which use Derive classes methods
-    template<class Derived>
-    class lazy_cached_base {
+    template<class Derived, class DefaultType = void*>
+    class lazy_base {
     protected:
         // This function is needed because every templated function
         // with different args has its own static buffer
@@ -553,94 +537,88 @@ namespace li { namespace detail {
         }
 
     public:
-        template<class T = void*>
+        template<class T = DefaultType>
+        LAZY_IMPORTER_FORCEINLINE static T safe() noexcept
+        {
+            return Derived::get<T, safe_module_enumerator>();
+        }
+
+        template<class T = DefaultType>
         LAZY_IMPORTER_FORCEINLINE static T cached() noexcept
         {
             auto& cached = _cache();
             if(!cached)
                 cached = Derived::get<void*>();
 
-            return reinterpret_cast<T>(cached);
+            return (T)(cached);
         }
 
-        template<class T = void*>
+        template<class T = DefaultType>
         LAZY_IMPORTER_FORCEINLINE static T safe_cached() noexcept
         {
             auto& cached = _cache();
             if(!cached)
                 cached = Derived::safe<void*>();
 
-            return reinterpret_cast<T>(cached);
+            return (T)(cached);
         }
     };
 
     // TODO implement nice module iterator API
     template<hash_t::value_type Hash>
-    struct lazy_module : lazy_cached_base<lazy_module<Hash>> {
-        template<class T = void*>
+    struct lazy_module : lazy_base<lazy_module<Hash>> {
+        template<class T = void*, class Enum = unsafe_module_enumerator>
         LAZY_IMPORTER_FORCEINLINE static T get() noexcept
         {
-            for(const auto& entry : unsafe_modules_range{})
-                if(hash(entry.BaseDllName) == Hash)
-                    return reinterpret_cast<T>(entry.DllBase);
-        }
-
-        template<class T = void*>
-        LAZY_IMPORTER_FORCEINLINE static T safe() noexcept
-        {
-            const auto head = ldr_data_entry();
-            auto       it   = head;
-            while(true) {
-                if(hash(it->BaseDllName) == Hash)
-                    return reinterpret_cast<T>(it->DllBase);
-
-                if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
-                    return {};
-
-                it = it->load_order_next();
-            }
+            Enum e;
+            do {
+                if(hash(e.value->BaseDllName) == Hash)
+                    return reinterpret_cast<T>(e.value->DllBase);
+                ++e;
+            } while(!e.done());
+            return {};
         }
     };
 
     template<hash_t::value_type Hash, class T>
-    struct lazy_function : lazy_cached_base<lazy_function> {
-        LAZY_IMPORTER_FORCEINLINE static T get() noexcept
+    struct lazy_function : lazy_cached_base<lazy_function, T> {
+        template<class F, class Enum = unsafe_module_enumerator>
+        LAZY_IMPORTER_FORCEINLINE static F get() noexcept
         {
             // for backwards compatability.
             // Before 2.0 it was only possible to resolve forwarded exports when
             // this macro was enabled
 #ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
-            return forwarded();
+            return forwarded<F, Enum>();
 #else
-            const auto* head = ldr_data_entry();
-
-            while(true) {
-                const exports_directory exports(head->DllBase);
+            Enum e;
+            do {
+                const exports_directory exports(e.value->DllBase);
 
                 if(exports)
                     for(auto i = 0u; i < exports.size(); ++i)
                         if(hash(exports.name(i)) == Hash)
                             return (T)(exports.address(i));
 
-                head = head->load_order_next();
-            }
+                ++e;
+            } while(!e.done());
+            return {};
 #endif
         }
 
-        LAZY_IMPORTER_FORCEINLINE static T forwarded()
+        template<class F, class Enum = unsafe_module_enumerator>
+        LAZY_IMPORTER_FORCEINLINE static T forwarded() noexcept
         {
-            const detail::win::LDR_DATA_TABLE_ENTRY_T* head;
-            detail::win::UNICODE_STRING_T              name;
-            hash_t::value_type                         module_hash = 0;
+            detail::win::UNICODE_STRING_T name;
+            hash_t::value_type            module_hash = 0;
 
-        search_beginning:
-            head = ldr_data_entry();
-
-            while(true) {
-                name = head->BaseDllName;
+            Enum e;
+            do {
+                name = e.value->BaseDllName;
                 name.Length -= 8; // get rid of .dll extension
+
                 if(!module_hash || hash(name) == module_hash) {
-                    const exports_directory exports(head->DllBase);
+                    const exports_directory exports(e.value->DllBase);
 
                     if(exports)
                         for(auto i = 0u; i < exports.size(); ++i)
@@ -653,76 +631,22 @@ namespace li { namespace detail {
 
                                     function_hash = hashes.second;
                                     module_hash   = hashes.first;
-                                    // need to break out of 2 loops. Pretty much no
-                                    // choice
-                                    goto search_beginning;
+
+                                    e.reset();
+                                    break;
                                 }
                                 return addr;
                             }
                 }
-
-                head = head->load_order_next();
-            }
+                ++e;
+            } while(!e.done());
+            return {};
         }
 
-        LAZY_IMPORTER_FORCEINLINE static T safe() noexcept
-        {
-            const auto head = ldr_data_entry();
-            auto       it   = head;
-            while(true) {
-                const exports_directory exports(it->DllBase);
-
-                if(exports)
-                    for(auto i = 0u; i < exports.size(); ++i)
-                        if(hash(exports.name(i)) == Hash)
-                            return (T)(exports.address(i));
-
-                if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
-                    return {};
-
-                it = it->load_order_next();
-            }
-        }
-
+        template<class F = T>
         LAZY_IMPORTER_FORCEINLINE static T forwarded_safe()
         {
-            const auto                                 head = ldr_data_entry();
-            const detail::win::LDR_DATA_TABLE_ENTRY_T* it;
-            detail::win::UNICODE_STRING_T              name;
-            hash_t::value_type                         module_hash = 0;
-
-        search_beginning:
-            it = ldr_data_entry();
-
-            while(true) {
-                name = it->BaseDllName;
-                name.Length -= 8; // get rid of .dll extension
-                if(!module_hash || hash(name) == module_hash) {
-                    const exports_directory exports(it->DllBase);
-
-                    if(exports)
-                        for(auto i = 0u; i < exports.size(); ++i)
-                            if(hash(exports.name(i)) == function_hash) {
-                                const auto addr = exports.address(i);
-
-                                if(exports.is_forwarded(addr)) {
-                                    auto hashes = hash_forwarded(
-                                        reinterpret_cast<const char*>(addr));
-
-                                    function_hash = hashes.second;
-                                    module_hash   = hashes.first;
-                                    // need to break out of 2 loops. Pretty much no
-                                    // choice
-                                    goto search_beginning;
-                                }
-                                return addr;
-                            }
-                }
-                if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
-                    return {};
-
-                it = it->load_order_next();
-            }
+            return forwarded<F, safe_module_enumerator>();
         }
     };
 
@@ -767,61 +691,6 @@ namespace li { namespace detail {
         }
     };
 
-    template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE const char* find_nocache() noexcept
-    {
-        return find_nocache(Hash, allow_all_modules{});
-    }
-
-    template<class ModuleFilter = allow_all_modules>
-    LAZY_IMPORTER_FORCEINLINE const char*
-    find_nocache(hash_t::value_type function_hash, ModuleFilter module_filter) noexcept
-    {
-        const auto* head = ldr_data_entry();
-
-        while(true) {
-            if(module_filter(head)) {
-                const exports_directory exports(head->DllBase);
-
-                if(exports)
-                    for(auto i = 0u; i < exports.size(); ++i)
-                        if(hash(exports.name(i)) == function_hash) {
-                            const auto addr = exports.address(i);
-
-#ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
-                            if(exports.is_forwarded(addr)) {
-                                auto hashes =
-                                    hash_forwarded(reinterpret_cast<const char*>(addr));
-                                return find_nocache(hashes.second,
-                                                    modules_by_hash{ hashes.first });
-                            }
-#endif
-                            return addr;
-                        }
-            }
-
-            head = head->load_order_next();
-        }
-    }
-
-    template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE const char* find_cached() noexcept
-    {
-        // don't replace this with "address = find_nocache<Hash>();"
-        static const char* address = 0;
-        if(!address)
-            address = find_nocache<Hash>();
-        return address;
-    }
-
-    template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE const char* find_nt_cached() noexcept
-    {
-        static const char* address = 0;
-        if(!address)
-            address = find_nt<Hash>();
-        return address;
-    }
 }} // namespace li::detail
 
 #endif // include guard
