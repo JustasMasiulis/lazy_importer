@@ -25,7 +25,6 @@
 
 // define LAZY_IMPORTER_CASE_INSENSITIVE to enable case insensitive comparisons
 
-// can be used for any function. Prefer for functions that you call rarely.
 #define LI_FN(name) \
     ::li::detail::lazy_function<::li::detail::khash(#name), decltype(&name)>()
 
