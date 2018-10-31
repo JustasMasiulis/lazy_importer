@@ -483,6 +483,63 @@ namespace li { namespace detail {
 #endif
     };
 
+    struct safe_module_iterator {
+        using value_type = const detail::win::LDR_DATA_TABLE_ENTRY_T;
+        value_type* it;
+        value_type* head;
+
+        LAZY_IMPORTER_FORCEINLINE safe_module_iterator& operator++() const noexcept
+        {
+            if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
+                it = nullptr;
+            else
+                it = it->load_order_next();
+            return *this;
+        }
+
+        LAZY_IMPORTER_FORCEINLINE bool operator!=(const safe_module_iterator&) const
+            noexcept
+        {
+            return it != nullptr;
+        }
+    };
+
+    struct unsafe_module_iterator {
+        const detail::win::LDR_DATA_TABLE_ENTRY_T* it;
+
+        LAZY_IMPORTER_FORCEINLINE unsafe_module_iterator& operator++() const noexcept
+        {
+            it = it->load_order_next();
+            return *this;
+        }
+
+        LAZY_IMPORTER_FORCEINLINE bool operator!=(const unsafe_module_iterator&) const
+            noexcept
+        {
+            return true;
+        }
+    };
+
+    struct unsafe_modules_range {
+        LAZY_IMPORTER_FORCEINLINE unsafe_module_iterator begin() const noexcept
+        {
+            return { ldr_data_entry() };
+        }
+        LAZY_IMPORTER_FORCEINLINE unsafe_module_iterator end() const noexcept
+        {
+            return {};
+        }
+    };
+    struct safe_modules_range {
+        LAZY_IMPORTER_FORCEINLINE safe_module_iterator begin() const noexcept
+        {
+            const auto ldr = ldr_data_entry();
+            return { ldr, ldr };
+        }
+        LAZY_IMPORTER_FORCEINLINE safe_module_iterator end() const noexcept { return {}; }
+    };
+
+
     // provides the cached functions which use Derive classes methods
     template<class Derived>
     class lazy_cached_base {
@@ -523,12 +580,9 @@ namespace li { namespace detail {
         template<class T = void*>
         LAZY_IMPORTER_FORCEINLINE static T get() noexcept
         {
-            auto head = ldr_data_entry();
-            while(true) {
-                if(hash(head->BaseDllName) == Hash)
-                    return reinterpret_cast<T>(head->DllBase);
-                head = head->load_order_next();
-            }
+            for(const auto& entry : unsafe_modules_range{})
+                if(hash(entry.BaseDllName) == Hash)
+                    return reinterpret_cast<T>(entry.DllBase);
         }
 
         template<class T = void*>
