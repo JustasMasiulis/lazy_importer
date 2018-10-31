@@ -344,8 +344,8 @@ namespace li { namespace detail {
         return value;
     }
 
-    LAZY_IMPORTER_FORCEINLINE hash_t::value_type
-                              hash(const win::UNICODE_STRING_T& str) noexcept
+    LAZY_IMPORTER_FORCEINLINE hash_t::value_type hash(
+        const win::UNICODE_STRING_T& str) noexcept
     {
         auto       first = str.Buffer;
         const auto last  = first + (str.Length / sizeof(wchar_t));
@@ -356,8 +356,8 @@ namespace li { namespace detail {
         return value;
     }
 
-    LAZY_IMPORTER_FORCEINLINE pair<hash_t::value_type, hash_t::value_type>
-                              hash_forwarded(const char* str) noexcept
+    LAZY_IMPORTER_FORCEINLINE pair<hash_t::value_type, hash_t::value_type> hash_forwarded(
+        const char* str) noexcept
     {
         pair<hash_t::value_type, hash_t::value_type> module_and_function{
             hash_t::offset, hash_t::offset
@@ -396,15 +396,15 @@ namespace li { namespace detail {
         return reinterpret_cast<const win::PEB_LDR_DATA_T*>(peb()->Ldr);
     }
 
-    LAZY_IMPORTER_FORCEINLINE const win::IMAGE_NT_HEADERS*
-                                    nt_headers(const char* base) noexcept
+    LAZY_IMPORTER_FORCEINLINE const win::IMAGE_NT_HEADERS* nt_headers(
+        const char* base) noexcept
     {
         return reinterpret_cast<const win::IMAGE_NT_HEADERS*>(
             base + reinterpret_cast<const win::IMAGE_DOS_HEADER*>(base)->e_lfanew);
     }
 
-    LAZY_IMPORTER_FORCEINLINE const win::IMAGE_EXPORT_DIRECTORY*
-                                    image_export_dir(const char* base) noexcept
+    LAZY_IMPORTER_FORCEINLINE const win::IMAGE_EXPORT_DIRECTORY* image_export_dir(
+        const char* base) noexcept
     {
         return reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
             base + nt_headers(base)->OptionalHeader.DataDirectory->VirtualAddress);
@@ -483,32 +483,148 @@ namespace li { namespace detail {
 #endif
     };
 
-    template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE const char* module_handle()
-    {
-        auto head = ldr_data_entry();
-        while(true) {
-            if(hash(head->BaseDllName) == Hash)
-                return head->DllBase;
-            head = head->load_order_next();
+    // provides the cached functions which use Derive classes methods
+    template<class Derived>
+    class lazy_cached_base {
+    protected:
+        // This function is needed because every templated function
+        // with different args has its own static buffer
+        LAZY_IMPORTER_FORCEINLINE static void*& _cache() noexcept
+        {
+            static void* value = nullptr;
+            return value;
         }
-    }
+
+    public:
+        template<class T = void*>
+        LAZY_IMPORTER_FORCEINLINE static T get_cached() noexcept
+        {
+            auto& cached = _cache();
+            if(!cached)
+                cached = Derived::get<void*>();
+
+            return reinterpret_cast<T>(cached);
+        }
+
+        template<class T = void*>
+        LAZY_IMPORTER_FORCEINLINE static T safe_cached() noexcept
+        {
+            auto& cached = _cache();
+            if(!cached)
+                cached = Derived::safe<void*>();
+
+            return reinterpret_cast<T>(cached);
+        }
+    };
 
     template<hash_t::value_type Hash>
-    LAZY_IMPORTER_FORCEINLINE const char* module_handle_safe()
-    {
-        const auto head = ldr_data_entry();
-        auto       it   = head;
-        while(true) {
-            if(hash(it->BaseDllName) == Hash)
-                return it->DllBase;
-
-            if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
-                return 0;
-
-            it = it->load_order_next();
+    struct lazy_module : lazy_cached_base<lazy_module<Hash>> {
+        template<class T = void*>
+        LAZY_IMPORTER_FORCEINLINE static T get() noexcept
+        {
+            auto head = ldr_data_entry();
+            while(true) {
+                if(hash(head->BaseDllName) == Hash)
+                    return reinterpret_cast<T>(head->DllBase);
+                head = head->load_order_next();
+            }
         }
-    }
+
+        template<class T = void*>
+        LAZY_IMPORTER_FORCEINLINE static T safe() noexcept
+        {
+            const auto head = ldr_data_entry();
+            auto       it   = head;
+            while(true) {
+                if(hash(it->BaseDllName) == Hash)
+                    return reinterpret_cast<T>(it->DllBase);
+
+                if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
+                    return {};
+
+                it = it->load_order_next();
+            }
+        }
+    };
+
+    template<hash_t::value_type Hash, class T>
+    struct lazy_function : lazy_cached_base<lazy_function> {
+        LAZY_IMPORTER_FORCEINLINE static T get() noexcept
+        {
+            const auto* head = ldr_data_entry();
+
+            while(true) {
+                if(module_filter(head)) {
+                    const exports_directory exports(head->DllBase);
+
+                    if(exports)
+                        for(auto i = 0u; i < exports.size(); ++i)
+                            if(hash(exports.name(i)) == function_hash) {
+                                const auto addr = exports.address(i);
+
+#ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
+                                if(exports.is_forwarded(addr)) {
+                                    auto hashes = hash_forwarded(
+                                        reinterpret_cast<const char*>(addr));
+                                    return find_nocache(hashes.second,
+                                                        modules_by_hash{ hashes.first });
+                                }
+#endif
+                                return addr;
+                            }
+                }
+
+                head = head->load_order_next();
+            }
+        }
+
+        LAZY_IMPORTER_FORCEINLINE static T get_forwarded()
+        {
+            const auto* head = ldr_data_entry();
+
+            while(true) {
+                if(module_filter(head)) {
+                    const exports_directory exports(head->DllBase);
+
+                    if(exports)
+                        for(auto i = 0u; i < exports.size(); ++i)
+                            if(hash(exports.name(i)) == function_hash) {
+                                const auto addr = exports.address(i);
+
+#ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
+                                if(exports.is_forwarded(addr)) {
+                                    auto hashes = hash_forwarded(
+                                        reinterpret_cast<const char*>(addr));
+                                    return find_nocache(hashes.second,
+                                                        modules_by_hash{ hashes.first });
+                                }
+#endif
+                                return addr;
+                            }
+                }
+
+                head = head->load_order_next();
+            }
+        }
+
+
+        template<class T = void*>
+        LAZY_IMPORTER_FORCEINLINE static T safe() noexcept
+        {
+            const auto head = ldr_data_entry();
+            auto       it   = head;
+            while(true) {
+                if(hash(it->BaseDllName) == Hash)
+                    return reinterpret_cast<T>(it->DllBase);
+
+                if(it->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head))
+                    return {};
+
+                it = it->load_order_next();
+            }
+        }
+    };
+
 
     template<hash_t::value_type Hash>
     LAZY_IMPORTER_FORCEINLINE const char* find_in_module(const char* module_base) noexcept
@@ -531,8 +647,8 @@ namespace li { namespace detail {
     }
 
     struct allow_all_modules {
-        LAZY_IMPORTER_FORCEINLINE constexpr bool
-        operator()(const win::LDR_DATA_TABLE_ENTRY_T*) const noexcept
+        LAZY_IMPORTER_FORCEINLINE constexpr bool operator()(
+            const win::LDR_DATA_TABLE_ENTRY_T*) const noexcept
         {
             return true;
         }
@@ -541,8 +657,8 @@ namespace li { namespace detail {
     struct modules_by_hash {
         hash_t::value_type _hash;
 
-        LAZY_IMPORTER_FORCEINLINE bool
-        operator()(const win::LDR_DATA_TABLE_ENTRY_T* module) const noexcept
+        LAZY_IMPORTER_FORCEINLINE bool operator()(
+            const win::LDR_DATA_TABLE_ENTRY_T* module) const noexcept
         {
             auto name = module->BaseDllName;
             name.Length -= 8; // .dll
