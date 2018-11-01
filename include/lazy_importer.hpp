@@ -14,16 +14,10 @@
  * limitations under the License.
  */
 
+// documentation is available at https://github.com/JustasMasiulis/lazy_importer
+
 #ifndef LAZY_IMPORTER_HPP
 #define LAZY_IMPORTER_HPP
-
-// define LAZY_IMPORTER_NO_FORCEINLINE to disable force inlining
-
-// define LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS to enable resolution of forwarded
-// exports. IMPORTANT: LAZY_IMPORTER_CASE_INSENSITIVE might be necessary for this option
-// to function properly.
-
-// define LAZY_IMPORTER_CASE_INSENSITIVE to enable case insensitive comparisons
 
 #define LI_FN(name) \
     ::li::detail::lazy_function<::li::detail::khash(#name), decltype(&name)>()
@@ -32,6 +26,9 @@
 
 #define LI_MODULE(name) ::li::detail::lazy_module<::li::detail::khash(name)>()
 
+// NOTE only std::forward is used from this header.
+// If there is a need to eliminate this dependency the function itself is very small.
+#include <utility>
 #include <cstddef>
 #include <intrin.h>
 
@@ -108,21 +105,6 @@ namespace li { namespace detail {
                 return reinterpret_cast<const LDR_DATA_TABLE_ENTRY_T*>(
                     InLoadOrderLinks.Flink);
             }
-        };
-
-        struct NT_TIB {
-            void*   ExceptionList;
-            void*   StackBase;
-            void*   StackLimit;
-            void*   SubSystemTib;
-            void*   FiberData;
-            void*   ArbitraryUserPointer;
-            NT_TIB* Self;
-        };
-
-        struct TEB {
-            void*  Reserved1[12];
-            PEB_T* ProcessEnvironmentBlock;
         };
 
         struct IMAGE_DOS_HEADER { // DOS .EXE header
@@ -286,10 +268,9 @@ namespace li { namespace detail {
         for(;;) {
             char c = *str++;
             if(!c)
-                break;
+                return value;
             value = hash_t::single(value, c);
         }
-        return value;
     }
 
     LAZY_IMPORTER_FORCEINLINE hash_t::value_type hash(
@@ -327,15 +308,11 @@ namespace li { namespace detail {
     LAZY_IMPORTER_FORCEINLINE const win::PEB_T* peb() noexcept
     {
 #if defined(_WIN64)
-        return reinterpret_cast<const win::TEB*>(
-                   __readgsqword(offsetof(win::NT_TIB, Self)))
-            ->ProcessEnvironmentBlock;
+        return reinterpret_cast<const win::PEB_T*>(__readgsqword(0x60));
 #elif defined(_WIN32)
-        return reinterpret_cast<const win::TEB*>(
-                   __readfsdword(offsetof(win::NT_TIB, Self)))
-            ->ProcessEnvironmentBlock;
+        return reinterpret_cast<const win::TEB*>(__readfsdword(0x30));
 #else
-#error unsupported platform. Open an issues and I might add something for you.
+#error Unsupported platform. Open an issue and I'll probably add support.
 #endif
     }
 
@@ -425,22 +402,19 @@ namespace li { namespace detail {
 
     struct safe_module_enumerator {
         using value_type = const detail::win::LDR_DATA_TABLE_ENTRY_T;
-        value_type* value;
-        value_type* head;
+        value_type*       value;
+        value_type* const head;
 
-        safe_module_enumerator() { value = head = ldr_data_entry(); }
+        LAZY_IMPORTER_FORCEINLINE safe_module_enumerator() noexcept
+            : value(ldr_data_entry()), head(value)
+        {}
 
         LAZY_IMPORTER_FORCEINLINE void reset() noexcept { value = head; }
 
-        LAZY_IMPORTER_FORCEINLINE safe_module_enumerator& operator++() noexcept
+        LAZY_IMPORTER_FORCEINLINE bool next() noexcept
         {
             value = value->load_order_next();
-            return *this;
-        }
-
-        LAZY_IMPORTER_FORCEINLINE bool done() const noexcept
-        {
-            return value->InLoadOrderLinks.Flink == reinterpret_cast<const char*>(head);
+            return value != head;
         }
     };
 
@@ -454,14 +428,11 @@ namespace li { namespace detail {
 
         LAZY_IMPORTER_FORCEINLINE void reset() noexcept { value = ldr_data_entry(); }
 
-
-        LAZY_IMPORTER_FORCEINLINE unsafe_module_enumerator& operator++() noexcept
+        LAZY_IMPORTER_FORCEINLINE bool next() noexcept
         {
             value = value->load_order_next();
-            return *this;
+            return true;
         }
-
-        LAZY_IMPORTER_FORCEINLINE static bool done() noexcept { return false; }
     };
 
     // provides the cached functions which use Derive classes methods
@@ -509,14 +480,23 @@ namespace li { namespace detail {
             do {
                 if(hash(e.value->BaseDllName) == Hash)
                     return (T)(e.value->DllBase);
-                ++e;
-            } while(!e.done());
+            } while(e.next());
             return {};
         }
     };
 
     template<hash_t::value_type Hash, class T>
     struct lazy_function : lazy_base<lazy_function<Hash, T>, T> {
+        template<class... Args>
+        LAZY_IMPORTER_FORCEINLINE decltype(auto) operator()(Args&&... args) const
+        {
+#ifndef LAZY_IMPORTER_CACHE_OPERATOR_PARENS
+            return get()(std::forward<Args>(args)...);
+#else
+            return safe()(std::forward<Args>(args)...);
+#endif
+        }
+
         template<class F = T, class Enum = unsafe_module_enumerator>
         LAZY_IMPORTER_FORCEINLINE static F get() noexcept
         {
@@ -530,13 +510,13 @@ namespace li { namespace detail {
             do {
                 const exports_directory exports(e.value->DllBase);
 
-                if(exports)
-                    for(auto i = 0u; i < exports.size(); ++i)
-                        if(hash(exports.name(i)) == Hash)
-                            return (F)(exports.address(i));
-
-                ++e;
-            } while(!e.done());
+                if(exports) {
+                    auto export_index = exports.size();
+                    while(export_index--)
+                        if(hash(exports.name(export_index)) == Hash)
+                            return (F)(exports.address(export_index));
+                }
+            } while(e.next());
             return {};
 #endif
         }
@@ -556,8 +536,9 @@ namespace li { namespace detail {
                 if(!module_hash || hash(name) == module_hash) {
                     const exports_directory exports(e.value->DllBase);
 
-                    if(exports)
-                        for(auto i = 0u; i < exports.size(); ++i)
+                    if(exports) {
+                        auto export_index = exports.size();
+                        while(export_index--)
                             if(hash(exports.name(i)) == function_hash) {
                                 const auto addr = exports.address(i);
 
@@ -573,9 +554,9 @@ namespace li { namespace detail {
                                 }
                                 return (F)(addr);
                             }
+                    }
                 }
-                ++e;
-            } while(!e.done());
+            } while(e.next());
             return {};
         }
 
@@ -610,8 +591,8 @@ namespace li { namespace detail {
             if(IsSafe && !exports)
                 return {};
 
-            for(auto i = 0u;; ++i) {
-                if(IsSafe && i >= exports.size())
+            for(unsigned long i{};; ++i) {
+                if(IsSafe && i == exports.size())
                     break;
 
                 if(hash(exports.name(i)) == Hash)
