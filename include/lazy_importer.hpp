@@ -310,7 +310,7 @@ namespace li { namespace detail {
 #if defined(_WIN64)
         return reinterpret_cast<const win::PEB_T*>(__readgsqword(0x60));
 #elif defined(_WIN32)
-        return reinterpret_cast<const win::TEB*>(__readfsdword(0x30));
+        return reinterpret_cast<const win::PEB_T*>(__readfsdword(0x30));
 #else
 #error Unsupported platform. Open an issue and I'll probably add support.
 #endif
@@ -625,25 +625,25 @@ namespace li { namespace detail {
         template<class F = T>
         LAZY_IMPORTER_FORCEINLINE static F nt() noexcept
         {
-            return in<F>(ldr_data_entry()->load_order_next());
+            return in<F>(ldr_data_entry()->load_order_next()->DllBase);
         }
 
         template<class F = T>
         LAZY_IMPORTER_FORCEINLINE static F nt_safe() noexcept
         {
-            return in_safe<F>(ldr_data_entry()->load_order_next());
+            return in_safe<F>(ldr_data_entry()->load_order_next()->DllBase);
         }
 
         template<class F = T>
         LAZY_IMPORTER_FORCEINLINE static F nt_cached() noexcept
         {
-            return in_cached<F>(ldr_data_entry()->load_order_next());
+            return in_cached<F>(ldr_data_entry()->load_order_next()->DllBase);
         }
 
         template<class F = T>
         LAZY_IMPORTER_FORCEINLINE static F nt_safe_cached() noexcept
         {
-            return in_safe_cached<F>(ldr_data_entry()->load_order_next());
+            return in_safe_cached<F>(ldr_data_entry()->load_order_next()->DllBase);
         }
     };
 
