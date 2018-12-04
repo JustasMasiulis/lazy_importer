@@ -540,7 +540,7 @@ namespace li { namespace detail {
                         auto export_index = exports.size();
                         while(export_index--)
                             if(hash(exports.name(export_index)) == function_hash) {
-                                const auto addr = exports.address(i);
+                                const auto addr = exports.address(export_index);
 
                                 if(exports.is_forwarded(addr)) {
                                     auto hashes = hash_forwarded(
