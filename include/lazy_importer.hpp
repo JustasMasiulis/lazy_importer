@@ -539,7 +539,7 @@ namespace li { namespace detail {
                     if(exports) {
                         auto export_index = exports.size();
                         while(export_index--)
-                            if(hash(exports.name(i)) == function_hash) {
+                            if(hash(exports.name(export_index)) == function_hash) {
                                 const auto addr = exports.address(i);
 
                                 if(exports.is_forwarded(addr)) {
