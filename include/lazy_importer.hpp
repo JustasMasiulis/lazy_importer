@@ -451,7 +451,7 @@ namespace li { namespace detail {
         template<class T = DefaultType>
         LAZY_IMPORTER_FORCEINLINE static T safe() noexcept
         {
-            return Derived::get<T, safe_module_enumerator>();
+            return Derived::template get<T, safe_module_enumerator>();
         }
 
         template<class T = DefaultType, class Enum = unsafe_module_enumerator>
@@ -459,7 +459,7 @@ namespace li { namespace detail {
         {
             auto& cached = _cache();
             if(!cached)
-                cached = Derived::get<void*, Enum>();
+                cached = Derived::template get<void*, Enum>();
 
             return (T)(cached);
         }
@@ -487,6 +487,8 @@ namespace li { namespace detail {
 
     template<hash_t::value_type Hash, class T>
     struct lazy_function : lazy_base<lazy_function<Hash, T>, T> {
+        using base_type = lazy_base<lazy_function<Hash, T>, T>;
+
         template<class... Args>
         LAZY_IMPORTER_FORCEINLINE decltype(auto) operator()(Args&&... args) const
         {
@@ -569,7 +571,7 @@ namespace li { namespace detail {
         template<class F = T, class Enum = unsafe_module_enumerator>
         LAZY_IMPORTER_FORCEINLINE static F forwarded_cached() noexcept
         {
-            auto& value = _cache();
+            auto& value = base_type::_cache();
             if(!value)
                 value = forwarded<void*, Enum>();
             return (F)(value);
@@ -610,7 +612,7 @@ namespace li { namespace detail {
         template<class F = T, bool IsSafe = false, class Module>
         LAZY_IMPORTER_FORCEINLINE static F in_cached(Module m) noexcept
         {
-            auto& value = _cache();
+            auto& value = base_type::_cache();
             if(!value)
                 value = in<void*, IsSafe>(m);
             return (F)(value);
