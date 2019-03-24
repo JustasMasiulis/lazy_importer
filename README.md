@@ -72,7 +72,7 @@ LI_FN(VirtualProtect).in(LI_MODULE("kernel32.dll").cached());
     <th>function</th>
     <th>safe</th>
     <th>cached</th>
-    <th><code>forwarded</th>
+    <th>forwarded</th>
   </tr>
   <tr>
     <td colspan="4">calls resolved export using given arguments</td>
