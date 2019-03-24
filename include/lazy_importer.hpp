@@ -495,7 +495,7 @@ namespace li { namespace detail {
 #ifndef LAZY_IMPORTER_CACHE_OPERATOR_PARENS
             return get()(std::forward<Args>(args)...);
 #else
-            return cached()(std::forward<Args>(args)...);
+            return this->cached()(std::forward<Args>(args)...);
 #endif
         }
 
