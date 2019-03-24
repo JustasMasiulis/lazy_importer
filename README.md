@@ -1,4 +1,4 @@
-# lazy importer [![](https://img.shields.io/badge/version-2.0.1-green.svg)]()
+# lazy importer [![](https://img.shields.io/badge/version-2.0.4-green.svg)]()
 
 A simple and easy to use header only library to make the life of a reverse engineer much harder.
 
@@ -22,37 +22,182 @@ LI_FN(VirtualProtect).in(LI_MODULE("kernel32.dll").cached());
 
 ## documentation
 
-- `LI_FN(function_pointer) -> lazy_function`
+- `LI_FN(function_pointer)  -> lazy_function`
 - `LI_FN_DEF(function_type) -> lazy_function`
-- `LI_MODULE(module_name) -> lazy_module`
+- `LI_MODULE(module_name)  -> lazy_module`
+
+---
+
+- `safe` indicates that when function cannot complete its task successfully 0 is returned instead of undefined behaviour manifesting.
+- `cached` indicates that the result is only computed during the first call and later reused.
+- `forwarded` indicates that export forwarding will be correctly resolved.
 
 #### **`lazy_module`**
 
-| function                 | explanation                                                                  |
-| ------------------------ | ---------------------------------------------------------------------------- |
-| `get<T = void*>`         | returns address of module. If module does not exist behavior is not defined. |
-| `safe<T = void*>`        | returns address of module. If module does not exist returns 0.               |
-| `cached<T = void*>`      | same as `get` except the result is cached.                                   |
-| `safe_cached<T = void*>` | same as `safe` except the result is cached.                                  |
+<table>
+  <tr>
+    <th>function</th>
+    <th>safe</th>
+    <th>cached</th>
+  </tr>
+  <tr>
+    <td colspan="4">Attempts to find the given module and returns its address</td>
+  </tr>
+  <tr>
+    <td><code>get&lt;T = void*&gt;() -&gt; T</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+  </tr>
+    <tr>
+    <td><code>safe&lt;T = void*&gt;() -&gt; T</code></td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>cached&lt;T = void*&gt;() -&gt; T</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:white_check_mark:</td>
+  </tr>
+  <tr>
+    <td><code>safe_cached&lt;T = void*&gt;() -&gt; T</code></td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:white_check_mark:</td>
+  </tr>
+</table>
 
-#### **`lazy_function`**
+#### **`lazy_function<F>`**
 
-Shares API with lazy_module except it returns the address of function with these additions:
-
-- has overloaded `operator()` which acquires function using `get` and calls it
-  with provided arguments.
-- `forwarded`, `forwarded_safe`, `forwarded_cached`, `forwarded_safe_cached` same as `get` with the addition of ability to resolve forwarded exports.
-- `in`, `in_safe`, `in_cached`, `in_safe_cached` same functionality as `get`, but the search is done in a single module whose base address is the first parameter.
-- `nt`, `nt_safe`, `nt_cached`, `nt_safe_cached` same as `in(LI_MODULE("ntdll.dll).get())`.
+<table>
+  <tr>
+    <th>function</th>
+    <th>safe</th>
+    <th>cached</th>
+    <th><code>forwarded</th>
+  </tr>
+  <tr>
+    <td colspan="4">calls resolved export using given arguments</td>
+  </tr>
+  <tr>
+    <td><code>operator()(...) -&gt; result_of&lt;F, ...&gt;</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td colspan="4">attempts to resolve an export in all loaded modules and returns the function address</td>
+  </tr>
+  <tr>
+    <td><code>get&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>safe&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>cached&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>safe_cached&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>forwarded&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+    <td align="center">:white_check_mark:</td>
+  </tr>
+  <tr>
+    <td><code>forwarded_safe&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+    <td align="center">:white_check_mark:</td>
+  </tr>
+  <tr>
+    <td><code>forwarded_cached&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:white_check_mark:</td>
+  </tr>
+  <tr>
+    <td><code>forwarded_safe_cached&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:white_check_mark:</td>
+  </tr>
+  <tr>
+    <td colspan="4">attempts to resolve an export in the given module and returns the function address</td>
+  </tr>
+  <tr>
+    <td><code>in&lt;T = F, A&gt;(A module_address) -&gt; T</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>in_safe&lt;T = F, A&gt;(A module_address) -&gt; T</code></td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>in_cached&lt;T = F, A&gt;(A module_address) -&gt; T</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>in_safe_cached&lt;T = F, A&gt;(A module_address) -&gt; T</code></td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td colspan="4">attempts to resolve an export in <code>ntdll</code> and returns the function address</td>
+  </tr>
+  <tr>
+    <td><code>nt&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>nt_safe&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>nt_cached&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:x:</td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+  </tr>
+  <tr>
+    <td><code>nt_safe_cached&lt;T = F&gt;() -&gt; T</code></td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:white_check_mark:</td>
+    <td align="center">:x:</td>
+  </tr>
+</table>
 
 #### extra configuration
 
-| `#define`                                 | description                                                                             |
+| `#define`                                 | effects                                                                                 |
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | `LAZY_IMPORTER_NO_FORCEINLINE`            | disables force inlining                                                                 |
 | `LAZY_IMPORTER_CASE_INSENSITIVE`          | enables case insensitive comparison. Might be required for forwarded export resolution. |
 | `LAZY_IMPORTER_CACHE_OPERATOR_PARENS`     | uses `cached()` instead of `get()` in `operator()` of lazy_function                     |
-| `LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS` | uses `forwarded()` in `get()`. NOTE does not apply to `nt()` and `in()`.                |
+| `LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS` | uses `forwarded()` in `get()`. WARNING does not apply to `nt()` and `in()`.             |
 
 ## example output
 
