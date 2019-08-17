@@ -414,7 +414,7 @@ namespace li { namespace detail {
         LAZY_IMPORTER_FORCEINLINE bool next() noexcept
         {
             value = value->load_order_next();
-            return value != head;
+            return value != head && value->DllBase;
         }
     };
 
