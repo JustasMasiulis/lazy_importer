@@ -1,6 +1,6 @@
 # lazy importer [![](https://img.shields.io/badge/version-2.0.4-green.svg)]()
 
-A simple and easy to use header only library to make the life of a reverse engineer much harder.
+A simple and easy to use, header-only library to make the life of a reverse engineer much harder.
 
 ## small example
 
