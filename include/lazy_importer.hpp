@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Justas Masiulis
+ * Copyright 2018-2020 Justas Masiulis
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
