@@ -293,12 +293,12 @@ namespace li { namespace detail {
         };
 
         for(; *str != '.'; ++str)
-            hash_t::single(module_and_function.first, *str);
+            module_and_function.first = hash_t::single(module_and_function.first, *str);
 
         ++str;
 
         for(; *str; ++str)
-            hash_t::single(module_and_function.second, *str);
+            module_and_function.second = hash_t::single(module_and_function.second, *str);
 
         return module_and_function;
     }
