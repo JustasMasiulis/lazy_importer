@@ -243,3 +243,9 @@ LABEL_8:
                                                        + (unsigned int)v3[7]
                                                        + 4i64 * *(unsigned __int16 *)(v1 + (unsigned int)v3[9] + 2 * v4))))("hello world");
 ```
+
+## People that have supported this project
+I would like to thank people that have reached out to me and donated some money to support me and my projects
+
+* [@DefCon42](https://github.com/DefCon42)
+* [@Mecanik](https://github.com/Mecanik)
