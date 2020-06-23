@@ -20,15 +20,9 @@
 #define LAZY_IMPORTER_HPP
 
 #ifdef _KERNEL_MODE
-extern "C" PVOID g_ldr;
-
-__forceinline void LogpSleep(LONG millisecond) {
-	PAGED_CODE();
-
-	LARGE_INTEGER interval = {};
-	interval.QuadPart = -(10000ll * millisecond);  // msec
-	KeDelayExecutionThread(KernelMode, FALSE, &interval);
-}
+extern "C" PVOID g_DriverSection;
+// 1. add a globalvar PVOID g_DriverSection, set g_DriverSection = DriverObject->DriverSection at very beginning of DriverEntry.
+// 2. MmIsAddressValid is imported to avoid BugCheck when access session space images (like win32k.sys or cdd.dll)
 #endif
 
 #define LI_FN(name) \
@@ -350,7 +344,7 @@ namespace li { namespace detail {
 	LAZY_IMPORTER_FORCEINLINE const win::LDR_DATA_TABLE_ENTRY_T* ldr_data_entry() noexcept
     {
 #ifdef _KERNEL_MODE
-		return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(g_ldr);
+		return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(g_DriverSection);
 #else
         return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(ldr()->InLoadOrderModuleList.Flink);
 #endif
