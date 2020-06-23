@@ -19,6 +19,18 @@
 #ifndef LAZY_IMPORTER_HPP
 #define LAZY_IMPORTER_HPP
 
+#ifdef _KERNEL_MODE
+extern "C" PVOID g_ldr;
+
+__forceinline void LogpSleep(LONG millisecond) {
+	PAGED_CODE();
+
+	LARGE_INTEGER interval = {};
+	interval.QuadPart = -(10000ll * millisecond);  // msec
+	KeDelayExecutionThread(KernelMode, FALSE, &interval);
+}
+#endif
+
 #define LI_FN(name) \
     ::li::detail::lazy_function<::li::detail::khash(#name), decltype(&name)>()
 
@@ -28,6 +40,7 @@
 
 // NOTE only std::forward is used from this header.
 // If there is a need to eliminate this dependency the function itself is very small.
+
 #include <utility>
 #include <cstddef>
 #include <intrin.h>
@@ -102,8 +115,7 @@ namespace li { namespace detail {
             LAZY_IMPORTER_FORCEINLINE const LDR_DATA_TABLE_ENTRY_T*
                                             load_order_next() const noexcept
             {
-                return reinterpret_cast<const LDR_DATA_TABLE_ENTRY_T*>(
-                    InLoadOrderLinks.Flink);
+                return (const LDR_DATA_TABLE_ENTRY_T*)InLoadOrderLinks.Flink;
             }
         };
 
@@ -334,11 +346,14 @@ namespace li { namespace detail {
         return reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
             base + nt_headers(base)->OptionalHeader.DataDirectory->VirtualAddress);
     }
-
-    LAZY_IMPORTER_FORCEINLINE const win::LDR_DATA_TABLE_ENTRY_T* ldr_data_entry() noexcept
+    
+	LAZY_IMPORTER_FORCEINLINE const win::LDR_DATA_TABLE_ENTRY_T* ldr_data_entry() noexcept
     {
-        return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
-            ldr()->InLoadOrderModuleList.Flink);
+#ifdef _KERNEL_MODE
+		return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(g_ldr);
+#else
+        return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(ldr()->InLoadOrderModuleList.Flink);
+#endif
     }
 
     struct exports_directory {
@@ -403,17 +418,23 @@ namespace li { namespace detail {
     struct safe_module_enumerator {
         using value_type = const detail::win::LDR_DATA_TABLE_ENTRY_T;
         value_type*       value;
-        value_type* const head;
+        value_type*       head;
 
         LAZY_IMPORTER_FORCEINLINE safe_module_enumerator() noexcept
-            : value(ldr_data_entry()), head(value)
-        {}
+#ifdef _KERNEL_MODE
+			: value(ldr_data_entry()->load_order_next()->load_order_next()), head(ldr_data_entry()->load_order_next())
+#else
+			: value(ldr_data_entry()), head(value)
+#endif
+        {
+		}
 
-        LAZY_IMPORTER_FORCEINLINE void reset() noexcept { value = head; }
+        LAZY_IMPORTER_FORCEINLINE void reset() noexcept { value = head->load_order_next(); }
 
         LAZY_IMPORTER_FORCEINLINE bool next() noexcept
         {
             value = value->load_order_next();
+
             return value != head && value->DllBase;
         }
     };
@@ -478,7 +499,7 @@ namespace li { namespace detail {
         {
             Enum e;
             do {
-                if(hash(e.value->BaseDllName) == Hash)
+                if(e.value->BaseDllName.Length && hash(e.value->BaseDllName) == Hash)
                     return (T)(e.value->DllBase);
             } while(e.next());
             return {};
@@ -508,8 +529,17 @@ namespace li { namespace detail {
 #ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
             return forwarded<F, Enum>();
 #else
-            Enum e;
+
+			Enum e;
+
             do {
+
+				if (!e.value->DllBase || !e.value->FullDllName.Length)
+					continue;
+#ifdef _KERNEL_MODE
+				if (!MmIsAddressValid((PVOID)e.value->DllBase))
+					continue;
+#endif
                 const exports_directory exports(e.value->DllBase);
 
                 if(exports) {
