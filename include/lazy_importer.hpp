@@ -19,12 +19,6 @@
 #ifndef LAZY_IMPORTER_HPP
 #define LAZY_IMPORTER_HPP
 
-#ifdef _KERNEL_MODE
-extern "C" PVOID g_DriverSection;
-// 1. add a globalvar PVOID g_DriverSection, set g_DriverSection = DriverObject->DriverSection at very beginning of DriverEntry.
-// 2. MmIsAddressValid is imported to avoid BugCheck when access session space images (like win32k.sys or cdd.dll)
-#endif
-
 #define LI_FN(name) \
     ::li::detail::lazy_function<::li::detail::khash(#name), decltype(&name)>()
 
@@ -109,7 +103,8 @@ namespace li { namespace detail {
             LAZY_IMPORTER_FORCEINLINE const LDR_DATA_TABLE_ENTRY_T*
                                             load_order_next() const noexcept
             {
-                return (const LDR_DATA_TABLE_ENTRY_T*)InLoadOrderLinks.Flink;
+                return reinterpret_cast<const LDR_DATA_TABLE_ENTRY_T*>(
+                    InLoadOrderLinks.Flink);
             }
         };
 
@@ -340,14 +335,11 @@ namespace li { namespace detail {
         return reinterpret_cast<const win::IMAGE_EXPORT_DIRECTORY*>(
             base + nt_headers(base)->OptionalHeader.DataDirectory->VirtualAddress);
     }
-    
-	LAZY_IMPORTER_FORCEINLINE const win::LDR_DATA_TABLE_ENTRY_T* ldr_data_entry() noexcept
+
+    LAZY_IMPORTER_FORCEINLINE const win::LDR_DATA_TABLE_ENTRY_T* ldr_data_entry() noexcept
     {
-#ifdef _KERNEL_MODE
-		return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(g_DriverSection);
-#else
-        return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(ldr()->InLoadOrderModuleList.Flink);
-#endif
+        return reinterpret_cast<const win::LDR_DATA_TABLE_ENTRY_T*>(
+            ldr()->InLoadOrderModuleList.Flink);
     }
 
     struct exports_directory {
@@ -401,8 +393,8 @@ namespace li { namespace detail {
             return _base + rva_table[ord_table[index]];
         }
 
-        LAZY_IMPORTER_FORCEINLINE bool is_forwarded(const char* export_address) const
-            noexcept
+        LAZY_IMPORTER_FORCEINLINE bool is_forwarded(
+            const char* export_address) const noexcept
         {
             const auto ui_ied = reinterpret_cast<const char*>(_ied);
             return (export_address > ui_ied && export_address < ui_ied + _ied_size);
@@ -411,19 +403,22 @@ namespace li { namespace detail {
 
     struct safe_module_enumerator {
         using value_type = const detail::win::LDR_DATA_TABLE_ENTRY_T;
-        value_type*       value;
-        value_type*       head;
+        value_type* value;
+        value_type* head;
 
         LAZY_IMPORTER_FORCEINLINE safe_module_enumerator() noexcept
-#ifdef _KERNEL_MODE
-			: value(ldr_data_entry()->load_order_next()->load_order_next()), head(ldr_data_entry()->load_order_next())
-#else
-			: value(ldr_data_entry()), head(value)
-#endif
-        {
-		}
+            : safe_module_enumerator(ldr_data_entry())
+        {}
 
-        LAZY_IMPORTER_FORCEINLINE void reset() noexcept { value = head->load_order_next(); }
+        LAZY_IMPORTER_FORCEINLINE
+        safe_module_enumerator(const detail::win::LDR_DATA_TABLE_ENTRY_T* ldr) noexcept
+            : value(ldr->load_order_next()), head(value)
+        {}
+
+        LAZY_IMPORTER_FORCEINLINE void reset() noexcept
+        {
+            value = head->load_order_next();
+        }
 
         LAZY_IMPORTER_FORCEINLINE bool next() noexcept
         {
@@ -493,10 +488,31 @@ namespace li { namespace detail {
         {
             Enum e;
             do {
-                if(e.value->BaseDllName.Length && hash(e.value->BaseDllName) == Hash)
+                if(hash(e.value->BaseDllName) == Hash)
                     return (T)(e.value->DllBase);
             } while(e.next());
             return {};
+        }
+
+        template<class T = void*, class Ldr>
+        LAZY_IMPORTER_FORCEINLINE static T in(Ldr ldr) noexcept
+        {
+            safe_module_enumerator e((const detail::win::LDR_DATA_TABLE_ENTRY_T*)(ldr));
+            do {
+                if(hash(e.value->BaseDllName) == Hash)
+                    return (T)(e.value->DllBase);
+            } while(e.next());
+            return {};
+        }
+
+        template<class T = void*, class Ldr>
+        LAZY_IMPORTER_FORCEINLINE static T in_cached(Ldr ldr) noexcept
+        {
+            auto& cached = lazy_base<lazy_module<Hash>>::_cache();
+            if(!cached)
+                cached = in(ldr);
+
+            return (T)(cached);
         }
     };
 
@@ -524,16 +540,14 @@ namespace li { namespace detail {
             return forwarded<F, Enum>();
 #else
 
-			Enum e;
+            Enum e;
 
             do {
-
-				if (!e.value->DllBase || !e.value->FullDllName.Length)
-					continue;
-#ifdef _KERNEL_MODE
-				if (!MmIsAddressValid((PVOID)e.value->DllBase))
-					continue;
+#ifdef LAZY_IMPORTER_HARDENED_MODULE_CHECKS
+                if(!e.value->DllBase || !e.value->FullDllName.Length)
+                    continue;
 #endif
+
                 const exports_directory exports(e.value->DllBase);
 
                 if(exports) {
