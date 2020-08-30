@@ -28,6 +28,7 @@
 
 // NOTE only std::forward is used from this header.
 // If there is a need to eliminate this dependency the function itself is very small.
+
 #include <utility>
 #include <cstddef>
 #include <intrin.h>
@@ -392,8 +393,8 @@ namespace li { namespace detail {
             return _base + rva_table[ord_table[index]];
         }
 
-        LAZY_IMPORTER_FORCEINLINE bool is_forwarded(const char* export_address) const
-            noexcept
+        LAZY_IMPORTER_FORCEINLINE bool is_forwarded(
+            const char* export_address) const noexcept
         {
             const auto ui_ied = reinterpret_cast<const char*>(_ied);
             return (export_address > ui_ied && export_address < ui_ied + _ied_size);
@@ -402,18 +403,27 @@ namespace li { namespace detail {
 
     struct safe_module_enumerator {
         using value_type = const detail::win::LDR_DATA_TABLE_ENTRY_T;
-        value_type*       value;
-        value_type* const head;
+        value_type* value;
+        value_type* head;
 
         LAZY_IMPORTER_FORCEINLINE safe_module_enumerator() noexcept
-            : value(ldr_data_entry()), head(value)
+            : safe_module_enumerator(ldr_data_entry())
         {}
 
-        LAZY_IMPORTER_FORCEINLINE void reset() noexcept { value = head; }
+        LAZY_IMPORTER_FORCEINLINE
+        safe_module_enumerator(const detail::win::LDR_DATA_TABLE_ENTRY_T* ldr) noexcept
+            : value(ldr->load_order_next()), head(value)
+        {}
+
+        LAZY_IMPORTER_FORCEINLINE void reset() noexcept
+        {
+            value = head->load_order_next();
+        }
 
         LAZY_IMPORTER_FORCEINLINE bool next() noexcept
         {
             value = value->load_order_next();
+
             return value != head && value->DllBase;
         }
     };
@@ -483,6 +493,27 @@ namespace li { namespace detail {
             } while(e.next());
             return {};
         }
+
+        template<class T = void*, class Ldr>
+        LAZY_IMPORTER_FORCEINLINE static T in(Ldr ldr) noexcept
+        {
+            safe_module_enumerator e((const detail::win::LDR_DATA_TABLE_ENTRY_T*)(ldr));
+            do {
+                if(hash(e.value->BaseDllName) == Hash)
+                    return (T)(e.value->DllBase);
+            } while(e.next());
+            return {};
+        }
+
+        template<class T = void*, class Ldr>
+        LAZY_IMPORTER_FORCEINLINE static T in_cached(Ldr ldr) noexcept
+        {
+            auto& cached = lazy_base<lazy_module<Hash>>::_cache();
+            if(!cached)
+                cached = in(ldr);
+
+            return (T)(cached);
+        }
     };
 
     template<hash_t::value_type Hash, class T>
@@ -508,8 +539,15 @@ namespace li { namespace detail {
 #ifdef LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
             return forwarded<F, Enum>();
 #else
+
             Enum e;
+
             do {
+#ifdef LAZY_IMPORTER_HARDENED_MODULE_CHECKS
+                if(!e.value->DllBase || !e.value->FullDllName.Length)
+                    continue;
+#endif
+
                 const exports_directory exports(e.value->DllBase);
 
                 if(exports) {
