@@ -308,10 +308,16 @@ namespace li { namespace detail {
     // some helper functions
     LAZY_IMPORTER_FORCEINLINE const win::PEB_T* peb() noexcept
     {
-#if defined(_WIN64)
-        return reinterpret_cast<const win::PEB_T*>(__readgsqword(0x60));
-#elif defined(_WIN32)
-        return reinterpret_cast<const win::PEB_T*>(__readfsdword(0x30));
+#ifdef _M_X64
+      return reinterpret_cast<const win::PEB_T*>(__readgsqword(0x60));
+#elif _M_IX86
+      return reinterpret_cast<const win::PEB_T*>(__readfsdword(0x30));
+#elif _M_ARM
+      return *reinterpret_cast<const win::PEB_T**>(_MoveFromCoprocessor(15, 0, 13, 0, 2) + 0x30);
+#elif _M_ARM64
+      return *reinterpret_cast<const win::PEB_T**>(__getReg(18) + 0x60);
+#elif _M_IA64
+      return *reinterpret_cast<const win::PEB_T**>((char*)_rdteb() + 0x60);
 #else
 #error Unsupported platform. Open an issue and I'll probably add support.
 #endif
