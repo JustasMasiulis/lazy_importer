@@ -1,4 +1,4 @@
-# lazy importer [![](https://img.shields.io/badge/version-2.0.4-green.svg)]()
+# lazy importer [![](https://img.shields.io/badge/version-2.1.0-green.svg)]()
 
 A simple and easy to use header only library to make the life of a reverse engineer much harder.
 
@@ -19,6 +19,7 @@ LI_FN(VirtualProtect).in(LI_MODULE("kernel32.dll").cached());
 - Does not leave any imports in the executable.
 - Produces extremely small assembly.
 - Non caching functions do not leave anything in data sections.
+- Hashes are randomized for each compilation to defeat basic hash database attacks.
 
 ## documentation
 
@@ -212,6 +213,7 @@ LI_FN(VirtualProtect).in(LI_MODULE("kernel32.dll").cached());
 | `LAZY_IMPORTER_CACHE_OPERATOR_PARENS`     | uses `cached()` instead of `get()` in `operator()` of lazy_function                     |
 | `LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS` | uses `forwarded()` in `get()`. WARNING does not apply to `nt()` and `in()`.             |
 | `LAZY_IMPORTER_HARDENED_MODULE_CHECKS`    | adds extra sanity checks to module enumeration.                                         |
+| `LAZY_IMPORTER_NO_CPP_FORWARD`            | Removes dependence on `<utility>` c++ header.                                           | 
 
 ## example output
 
