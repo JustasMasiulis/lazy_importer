@@ -1,5 +1,5 @@
 /*
- * Copyright 2018-2020 Justas Masiulis
+ * Copyright 2018-2022 Justas Masiulis
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,23 +14,35 @@
  * limitations under the License.
  */
 
-// documentation is available at https://github.com/JustasMasiulis/lazy_importer
+// === FAQ === documentation is available at https://github.com/JustasMasiulis/lazy_importer
+// * Code doesn't compile with errors about pointer conversion:
+//  - Try using `nullptr` instead of `NULL` or call `get()` instead of using the overloaded operator()
+// * Lazy importer can't find the function I want:
+//   - Double check that the module in which it's located in is actually loaded
+//   - Try #define LAZY_IMPORTER_CASE_INSENSITIVE
+//     This will start using case insensitive comparison globally
+//   - Try #define LAZY_IMPORTER_RESOLVE_FORWARDED_EXPORTS
+//     This will enable forwarded export resolution globally instead of needing explicit `forwarded()` calls
 
 #ifndef LAZY_IMPORTER_HPP
 #define LAZY_IMPORTER_HPP
 
-#define LI_FN(name) \
-    ::li::detail::lazy_function<::li::detail::khash(#name), decltype(&name)>()
 
-#define LI_FN_DEF(name) ::li::detail::lazy_function<::li::detail::khash(#name), name>()
+#define LI_FN(name) ::li::detail::lazy_function<LAZY_IMPORTER_KHASH(#name), decltype(&name)>()
 
-#define LI_MODULE(name) ::li::detail::lazy_module<::li::detail::khash(name)>()
+#define LI_FN_DEF(name) ::li::detail::lazy_function<LAZY_IMPORTER_KHASH(#name), name>()
 
-// NOTE only std::forward is used from this header.
-// If there is a need to eliminate this dependency the function itself is very small.
+#define LI_MODULE(name) ::li::detail::lazy_module<LAZY_IMPORTER_KHASH(name)>()
 
+#ifndef LAZY_IMPORTER_CPP_FORWARD
+#ifdef LAZY_IMPORTER_NO_CPP_FORWARD
+#define LAZY_IMPORTER_CPP_FORWARD(t, v) v
+#else
 #include <utility>
-#include <cstddef>
+#define LAZY_IMPORTER_CPP_FORWARD(t, v) std::forward<t>( v )
+#endif
+#endif
+
 #include <intrin.h>
 
 #ifndef LAZY_IMPORTER_NO_FORCEINLINE
@@ -45,19 +57,20 @@
 #define LAZY_IMPORTER_FORCEINLINE inline
 #endif
 
+
 #ifdef LAZY_IMPORTER_CASE_INSENSITIVE
-#define LAZY_IMPORTER_TOLOWER(c) (c >= 'A' && c <= 'Z' ? (c | (1 << 5)) : c)
+#define LAZY_IMPORTER_CASE_SENSITIVITY false
 #else
-#define LAZY_IMPORTER_TOLOWER(c) (c)
+#define LAZY_IMPORTER_CASE_SENSITIVITY true
 #endif
 
-namespace li { namespace detail {
+#define LAZY_IMPORTER_STRINGIZE(x) #x
+#define LAZY_IMPORTER_STRINGIZE_EXPAND(x) LAZY_IMPORTER_STRINGIZE(x)
 
-    template<class First, class Second>
-    struct pair {
-        First  first;
-        Second second;
-    };
+#define LAZY_IMPORTER_KHASH(str) ::li::detail::khash(str, \
+    ::li::detail::khash_impl( __TIME__ __DATE__ LAZY_IMPORTER_STRINGIZE_EXPAND(__LINE__) LAZY_IMPORTER_STRINGIZE_EXPAND(__COUNTER__), 2166136261 ))
+
+namespace li { namespace detail {
 
     namespace win {
 
@@ -238,72 +251,79 @@ namespace li { namespace detail {
 
     } // namespace win
 
-    // hashing stuff
-    struct hash_t {
-        using value_type                            = unsigned long;
-        constexpr static value_type         offset  = 2166136261;
-        constexpr static value_type         prime   = 16777619;
-        constexpr static unsigned long long prime64 = prime;
-
-        LAZY_IMPORTER_FORCEINLINE constexpr static value_type single(value_type value,
-                                                                     char c) noexcept
-        {
-            return static_cast<hash_t::value_type>(
-                (value ^ LAZY_IMPORTER_TOLOWER(c)) *
-                static_cast<unsigned long long>(prime));
-        }
+    struct forwarded_hashes {
+       unsigned module_hash;
+       unsigned function_hash;
     };
 
-    template<class CharT = char>
-    LAZY_IMPORTER_FORCEINLINE constexpr hash_t::value_type
-    khash(const CharT* str, hash_t::value_type value = hash_t::offset) noexcept
+    // 64 bit integer where 32 bits are used for the hash offset
+    // and remaining 32 bits are used for the hash computed using it
+    using offset_hash_pair = unsigned long long;
+
+    LAZY_IMPORTER_FORCEINLINE constexpr unsigned get_hash(offset_hash_pair pair) noexcept { return ( pair & 0xFFFFFFFF ); }
+
+    LAZY_IMPORTER_FORCEINLINE constexpr unsigned get_offset(offset_hash_pair pair) noexcept { return ( pair >> 32 ); }
+
+    template<bool CaseInsensitive = LAZY_IMPORTER_CASE_SENSITIVITY>
+    LAZY_IMPORTER_FORCEINLINE constexpr unsigned hash_single(unsigned value, char c) noexcept
     {
-        return (*str ? khash(str + 1, hash_t::single(value, *str)) : value);
+        return static_cast< unsigned int >(
+            (value ^ (CaseInsensitive && c >= 'A' && c <= 'Z' ? (c | (1 << 5)) : c)) *
+            static_cast<unsigned long long>(16777619));
+    }
+
+    LAZY_IMPORTER_FORCEINLINE constexpr unsigned
+        khash_impl(const char* str, unsigned value) noexcept
+    {
+        return (*str ? khash_impl(str + 1, hash_single(value, *str)) : value);
+    }
+
+    LAZY_IMPORTER_FORCEINLINE constexpr offset_hash_pair khash(
+        const char* str, unsigned offset) noexcept
+    {
+        return ((offset_hash_pair{ offset } << 32) | khash_impl(str, offset));
     }
 
     template<class CharT = char>
-    LAZY_IMPORTER_FORCEINLINE hash_t::value_type hash(const CharT* str) noexcept
+    LAZY_IMPORTER_FORCEINLINE unsigned hash(const CharT* str, unsigned offset) noexcept
     {
-        hash_t::value_type value = hash_t::offset;
+        unsigned value = offset;
 
         for(;;) {
             char c = *str++;
             if(!c)
                 return value;
-            value = hash_t::single(value, c);
+            value = hash_single(value, c);
         }
     }
 
-    LAZY_IMPORTER_FORCEINLINE hash_t::value_type hash(
-        const win::UNICODE_STRING_T& str) noexcept
+    LAZY_IMPORTER_FORCEINLINE unsigned hash(
+       const win::UNICODE_STRING_T& str, unsigned offset) noexcept
     {
         auto       first = str.Buffer;
         const auto last  = first + (str.Length / sizeof(wchar_t));
-        auto       value = hash_t::offset;
+        auto       value = offset;
         for(; first != last; ++first)
-            value = hash_t::single(value, static_cast<char>(*first));
+            value = hash_single(value, static_cast<char>(*first));
 
         return value;
     }
 
-    LAZY_IMPORTER_FORCEINLINE pair<hash_t::value_type, hash_t::value_type> hash_forwarded(
-        const char* str) noexcept
+    LAZY_IMPORTER_FORCEINLINE forwarded_hashes hash_forwarded(
+        const char* str, unsigned offset) noexcept
     {
-        pair<hash_t::value_type, hash_t::value_type> module_and_function{
-            hash_t::offset, hash_t::offset
-        };
+        forwarded_hashes res{ offset, offset };
 
         for(; *str != '.'; ++str)
-            module_and_function.first = hash_t::single(module_and_function.first, *str);
+            res.module_hash = hash_single<true>(res.module_hash, *str);
 
         ++str;
 
         for(; *str; ++str)
-            module_and_function.second = hash_t::single(module_and_function.second, *str);
+            res.function_hash = hash_single(res.function_hash, *str);
 
-        return module_and_function;
+        return res;
     }
-
 
     // some helper functions
     LAZY_IMPORTER_FORCEINLINE const win::PEB_T* peb() noexcept
@@ -487,14 +507,14 @@ namespace li { namespace detail {
         }
     };
 
-    template<hash_t::value_type Hash>
-    struct lazy_module : lazy_base<lazy_module<Hash>> {
+    template<offset_hash_pair OHP>
+    struct lazy_module : lazy_base<lazy_module<OHP>> {
         template<class T = void*, class Enum = unsafe_module_enumerator>
         LAZY_IMPORTER_FORCEINLINE static T get() noexcept
         {
             Enum e;
             do {
-                if(hash(e.value->BaseDllName) == Hash)
+                if(hash(e.value->BaseDllName, get_offset(OHP)) == get_hash(OHP))
                     return (T)(e.value->DllBase);
             } while(e.next());
             return {};
@@ -505,7 +525,7 @@ namespace li { namespace detail {
         {
             safe_module_enumerator e((const detail::win::LDR_DATA_TABLE_ENTRY_T*)(ldr));
             do {
-                if(hash(e.value->BaseDllName) == Hash)
+                if(hash(e.value->BaseDllName, get_offset(OHP)) == get_hash(OHP))
                     return (T)(e.value->DllBase);
             } while(e.next());
             return {};
@@ -514,7 +534,7 @@ namespace li { namespace detail {
         template<class T = void*, class Ldr>
         LAZY_IMPORTER_FORCEINLINE static T in_cached(Ldr ldr) noexcept
         {
-            auto& cached = lazy_base<lazy_module<Hash>>::_cache();
+            auto& cached = lazy_base<lazy_module<OHP>>::_cache();
             if(!cached)
                 cached = in(ldr);
 
@@ -522,17 +542,17 @@ namespace li { namespace detail {
         }
     };
 
-    template<hash_t::value_type Hash, class T>
-    struct lazy_function : lazy_base<lazy_function<Hash, T>, T> {
-        using base_type = lazy_base<lazy_function<Hash, T>, T>;
+    template<offset_hash_pair OHP, class T>
+    struct lazy_function : lazy_base<lazy_function<OHP, T>, T> {
+        using base_type = lazy_base<lazy_function<OHP, T>, T>;
 
         template<class... Args>
         LAZY_IMPORTER_FORCEINLINE decltype(auto) operator()(Args&&... args) const
         {
 #ifndef LAZY_IMPORTER_CACHE_OPERATOR_PARENS
-            return get()(std::forward<Args>(args)...);
+            return get()(LAZY_IMPORTER_CPP_FORWARD(Args, args)...);
 #else
-            return this->cached()(std::forward<Args>(args)...);
+            return this->cached()(LAZY_IMPORTER_CPP_FORWARD(Args, args)...);
 #endif
         }
 
@@ -559,7 +579,7 @@ namespace li { namespace detail {
                 if(exports) {
                     auto export_index = exports.size();
                     while(export_index--)
-                        if(hash(exports.name(export_index)) == Hash)
+                        if(hash(exports.name(export_index), get_offset(OHP)) == get_hash(OHP))
                             return (F)(exports.address(export_index));
                 }
             } while(e.next());
@@ -571,29 +591,26 @@ namespace li { namespace detail {
         LAZY_IMPORTER_FORCEINLINE static F forwarded() noexcept
         {
             detail::win::UNICODE_STRING_T name;
-            hash_t::value_type            module_hash   = 0;
-            auto                          function_hash = Hash;
+            forwarded_hashes              hashes{ 0, get_hash(OHP) };
 
             Enum e;
             do {
                 name = e.value->BaseDllName;
                 name.Length -= 8; // get rid of .dll extension
 
-                if(!module_hash || hash(name) == module_hash) {
+                if(!hashes.module_hash || hash(name, get_offset(OHP)) == hashes.module_hash) {
                     const exports_directory exports(e.value->DllBase);
 
                     if(exports) {
                         auto export_index = exports.size();
                         while(export_index--)
-                            if(hash(exports.name(export_index)) == function_hash) {
+                            if(hash(exports.name(export_index), get_offset(OHP)) == hashes.function_hash) {
                                 const auto addr = exports.address(export_index);
 
                                 if(exports.is_forwarded(addr)) {
-                                    auto hashes = hash_forwarded(
-                                        reinterpret_cast<const char*>(addr));
-
-                                    function_hash = hashes.second;
-                                    module_hash   = hashes.first;
+                                    hashes = hash_forwarded(
+                                        reinterpret_cast<const char*>(addr),
+                                        get_offset(OHP));
 
                                     e.reset();
                                     break;
@@ -641,7 +658,7 @@ namespace li { namespace detail {
                 if(IsSafe && i == exports.size())
                     break;
 
-                if(hash(exports.name(i)) == Hash)
+                if(hash(exports.name(i), get_offset(OHP)) == get_hash(OHP))
                     return (F)(exports.address(i));
             }
             return {};
