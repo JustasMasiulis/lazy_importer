@@ -264,11 +264,11 @@ namespace li { namespace detail {
 
     LAZY_IMPORTER_FORCEINLINE constexpr unsigned get_offset(offset_hash_pair pair) noexcept { return ( pair >> 32 ); }
 
-    template<bool CaseInsensitive = LAZY_IMPORTER_CASE_SENSITIVITY>
+    template<bool CaseSensitive = LAZY_IMPORTER_CASE_SENSITIVITY>
     LAZY_IMPORTER_FORCEINLINE constexpr unsigned hash_single(unsigned value, char c) noexcept
     {
-        return static_cast< unsigned int >(
-            (value ^ (CaseInsensitive && c >= 'A' && c <= 'Z' ? (c | (1 << 5)) : c)) *
+        return static_cast<unsigned int>(
+            (value ^ ((CaseSensitive && c >= 'A' && c <= 'Z') ? (c | (1 << 5)) : c)) *
             static_cast<unsigned long long>(16777619));
     }
 
