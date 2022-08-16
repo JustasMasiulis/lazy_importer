@@ -268,7 +268,7 @@ namespace li { namespace detail {
     LAZY_IMPORTER_FORCEINLINE constexpr unsigned hash_single(unsigned value, char c) noexcept
     {
         return static_cast<unsigned int>(
-            (value ^ ((CaseSensitive && c >= 'A' && c <= 'Z') ? (c | (1 << 5)) : c)) *
+            (value ^ ((!CaseSensitive && c >= 'A' && c <= 'Z') ? (c | (1 << 5)) : c)) *
             static_cast<unsigned long long>(16777619));
     }
 
