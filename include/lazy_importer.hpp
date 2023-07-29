@@ -329,9 +329,21 @@ namespace li { namespace detail {
     LAZY_IMPORTER_FORCEINLINE const win::PEB_T* peb() noexcept
     {
 #if defined(_M_X64) || defined(__amd64__)
+#if defined(_MSC_VER)
         return reinterpret_cast<const win::PEB_T*>(__readgsqword(0x60));
+#else
+        const win::PEB_T* ptr;
+        __asm__ __volatile__ ("mov %%gs:0x60, %0" : "=r"(ptr));
+        return ptr;
+#endif
 #elif defined(_M_IX86) || defined(__i386__)
+#if defined(_MSC_VER)
         return reinterpret_cast<const win::PEB_T*>(__readfsdword(0x30));
+#else
+        const win::PEB_T* ptr;
+        __asm__ __volatile__ ("mov %%fs:0x30, %0" : "=r"(ptr));
+        return ptr;
+#endif
 #elif defined(_M_ARM) || defined(__arm__)
         return *reinterpret_cast<const win::PEB_T**>(_MoveFromCoprocessor(15, 0, 13, 0, 2) + 0x30);
 #elif defined(_M_ARM64) || defined(__aarch64__)
