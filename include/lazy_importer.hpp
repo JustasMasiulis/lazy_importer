@@ -590,7 +590,7 @@ namespace li { namespace detail {
                     auto export_index = exports.size();
                     while(export_index--)
                         if(hash(exports.name(export_index), get_offset(OHP)) == get_hash(OHP))
-                            return reinterpret_cast<F>(exports.address(export_index));
+                            return reinterpret_cast<F>(const_cast<char *>(exports.address(export_index)));
                 }
             } while(e.next());
             return {};
