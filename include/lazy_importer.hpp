@@ -536,7 +536,7 @@ namespace li { namespace detail {
             safe_module_enumerator e(reinterpret_cast<const detail::win::LDR_DATA_TABLE_ENTRY_T*>(ldr));
             do {
                 if(hash(e.value->BaseDllName, get_offset(OHP)) == get_hash(OHP))
-                    return reinterpret_cast<T>(e.value->DllBase);
+                    return reinterpret_cast<T>(const_cast<char *>(e.value->DllBase));
             } while(e.next());
             return {};
         }
@@ -669,7 +669,7 @@ namespace li { namespace detail {
                     break;
 
                 if(hash(exports.name(i), get_offset(OHP)) == get_hash(OHP))
-                     return (F)(exports.address(i));
+                     return reinterpret_cast<F>(const_cast<char *>(exports.address(i)));
             }
             return {};
         }
