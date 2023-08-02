@@ -525,7 +525,7 @@ namespace li { namespace detail {
             Enum e;
             do {
                 if(hash(e.value->BaseDllName, get_offset(OHP)) == get_hash(OHP))
-                    return reinterpret_cast<T>(e.value->DllBase);
+                    return (T)(e.value->DllBase);
             } while(e.next());
             return {};
         }
@@ -669,7 +669,7 @@ namespace li { namespace detail {
                     break;
 
                 if(hash(exports.name(i), get_offset(OHP)) == get_hash(OHP))
-                    return reinterpret_cast<F>(exports.address(i));
+                     return (F)(exports.address(i));
             }
             return {};
         }
