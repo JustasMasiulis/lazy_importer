@@ -413,9 +413,7 @@ namespace li { namespace detail {
 
         LAZY_IMPORTER_FORCEINLINE const char* name(size_type index) const noexcept
         {
-            return /*reinterpret_cast<const char*>*/(
-                _base + reinterpret_cast<const unsigned long*>(
-                            _base + _ied->AddressOfNames)[index]);
+            return _base + reinterpret_cast<const unsigned long*>(_base + _ied->AddressOfNames)[index];
         }
 
         LAZY_IMPORTER_FORCEINLINE const char* address(size_type index) const noexcept
@@ -507,7 +505,7 @@ namespace li { namespace detail {
             if(!cached)
                 cached = Derived::template get<void*, Enum>();
 
-            return reinterpret_cast<T>(cached);
+            return (T)(cached);
         }
 
         template<class T = DefaultType>
@@ -536,7 +534,7 @@ namespace li { namespace detail {
             safe_module_enumerator e(reinterpret_cast<const detail::win::LDR_DATA_TABLE_ENTRY_T*>(ldr));
             do {
                 if(hash(e.value->BaseDllName, get_offset(OHP)) == get_hash(OHP))
-                    return reinterpret_cast<T>(const_cast<char *>(e.value->DllBase));
+                    return (T)(e.value->DllBase);
             } while(e.next());
             return {};
         }
@@ -548,7 +546,7 @@ namespace li { namespace detail {
             if(!cached)
                 cached = in(ldr);
 
-            return reinterpret_cast<T>(cached);
+            return (T)(cached);
         }
     };
 
@@ -590,7 +588,7 @@ namespace li { namespace detail {
                     auto export_index = exports.size();
                     while(export_index--)
                         if(hash(exports.name(export_index), get_offset(OHP)) == get_hash(OHP))
-                            return reinterpret_cast<F>(const_cast<char *>(exports.address(export_index)));
+                            return (F)(exports.address(export_index));
                 }
             } while(e.next());
             return {};
@@ -625,7 +623,7 @@ namespace li { namespace detail {
                                     e.reset();
                                     break;
                                 }
-                                return reinterpret_cast<F>(addr);
+                                return (F)(addr);
                             }
                     }
                 }
@@ -645,7 +643,7 @@ namespace li { namespace detail {
             auto& value = base_type::_cache();
             if(!value)
                 value = forwarded<void*, Enum>();
-            return reinterpret_cast<F>(value);
+            return (F)(value);
         }
 
         template<class F = T>
@@ -669,7 +667,7 @@ namespace li { namespace detail {
                     break;
 
                 if(hash(exports.name(i), get_offset(OHP)) == get_hash(OHP))
-                     return reinterpret_cast<F>(const_cast<char *>(exports.address(i)));
+                    return (F)(exports.address(i));
             }
             return {};
         }
@@ -686,7 +684,7 @@ namespace li { namespace detail {
             auto& value = base_type::_cache();
             if(!value)
                 value = in<void*, IsSafe>(m);
-            return reinterpret_cast<F>(value);
+            return (F)(value);
         }
 
         template<class F = T, class Module>
