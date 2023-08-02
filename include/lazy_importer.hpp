@@ -262,14 +262,12 @@ namespace li { namespace detail {
 
     LAZY_IMPORTER_FORCEINLINE constexpr unsigned get_hash(offset_hash_pair pair) noexcept { return ( pair & 0xFFFFFFFF ); }
 
-    LAZY_IMPORTER_FORCEINLINE constexpr unsigned get_offset(offset_hash_pair pair) noexcept { return ( pair >> 32 ); }
+    LAZY_IMPORTER_FORCEINLINE constexpr unsigned get_offset(offset_hash_pair pair) noexcept { return static_cast<unsigned>( pair >> 32 ); }
 
     template<bool CaseSensitive = LAZY_IMPORTER_CASE_SENSITIVITY>
     LAZY_IMPORTER_FORCEINLINE constexpr unsigned hash_single(unsigned value, char c) noexcept
     {
-        return static_cast<unsigned int>(
-            (value ^ ((!CaseSensitive && c >= 'A' && c <= 'Z') ? (c | (1 << 5)) : c)) *
-            static_cast<unsigned long long>(16777619));
+        return (value ^ static_cast<unsigned>((!CaseSensitive && c >= 'A' && c <= 'Z') ? (c | (1 << 5)) : c)) * 16777619;
     }
 
     LAZY_IMPORTER_FORCEINLINE constexpr unsigned
@@ -381,9 +379,9 @@ namespace li { namespace detail {
     }
 
     struct exports_directory {
+        unsigned long                      _ied_size;
         const char*                        _base;
         const win::IMAGE_EXPORT_DIRECTORY* _ied;
-        unsigned long                      _ied_size;
 
     public:
         using size_type = unsigned long;
@@ -415,7 +413,7 @@ namespace li { namespace detail {
 
         LAZY_IMPORTER_FORCEINLINE const char* name(size_type index) const noexcept
         {
-            return reinterpret_cast<const char*>(
+            return /*reinterpret_cast<const char*>*/(
                 _base + reinterpret_cast<const unsigned long*>(
                             _base + _ied->AddressOfNames)[index]);
         }
@@ -509,7 +507,7 @@ namespace li { namespace detail {
             if(!cached)
                 cached = Derived::template get<void*, Enum>();
 
-            return (T)(cached);
+            return reinterpret_cast<T>(cached);
         }
 
         template<class T = DefaultType>
@@ -527,7 +525,7 @@ namespace li { namespace detail {
             Enum e;
             do {
                 if(hash(e.value->BaseDllName, get_offset(OHP)) == get_hash(OHP))
-                    return (T)(e.value->DllBase);
+                    return reinterpret_cast<T>(e.value->DllBase);
             } while(e.next());
             return {};
         }
@@ -535,10 +533,10 @@ namespace li { namespace detail {
         template<class T = void*, class Ldr>
         LAZY_IMPORTER_FORCEINLINE static T in(Ldr ldr) noexcept
         {
-            safe_module_enumerator e((const detail::win::LDR_DATA_TABLE_ENTRY_T*)(ldr));
+            safe_module_enumerator e(reinterpret_cast<const detail::win::LDR_DATA_TABLE_ENTRY_T*>(ldr));
             do {
                 if(hash(e.value->BaseDllName, get_offset(OHP)) == get_hash(OHP))
-                    return (T)(e.value->DllBase);
+                    return reinterpret_cast<T>(e.value->DllBase);
             } while(e.next());
             return {};
         }
@@ -550,7 +548,7 @@ namespace li { namespace detail {
             if(!cached)
                 cached = in(ldr);
 
-            return (T)(cached);
+            return reinterpret_cast<T>(cached);
         }
     };
 
@@ -592,7 +590,7 @@ namespace li { namespace detail {
                     auto export_index = exports.size();
                     while(export_index--)
                         if(hash(exports.name(export_index), get_offset(OHP)) == get_hash(OHP))
-                            return (F)(exports.address(export_index));
+                            return reinterpret_cast<F>(exports.address(export_index));
                 }
             } while(e.next());
             return {};
@@ -627,7 +625,7 @@ namespace li { namespace detail {
                                     e.reset();
                                     break;
                                 }
-                                return (F)(addr);
+                                return reinterpret_cast<F>(addr);
                             }
                     }
                 }
@@ -647,7 +645,7 @@ namespace li { namespace detail {
             auto& value = base_type::_cache();
             if(!value)
                 value = forwarded<void*, Enum>();
-            return (F)(value);
+            return reinterpret_cast<F>(value);
         }
 
         template<class F = T>
@@ -662,7 +660,7 @@ namespace li { namespace detail {
             if(IsSafe && !m)
                 return {};
 
-            const exports_directory exports((const char*)(m));
+            const exports_directory exports(reinterpret_cast<const char*>(m));
             if(IsSafe && !exports)
                 return {};
 
@@ -671,7 +669,7 @@ namespace li { namespace detail {
                     break;
 
                 if(hash(exports.name(i), get_offset(OHP)) == get_hash(OHP))
-                    return (F)(exports.address(i));
+                    return reinterpret_cast<F>(exports.address(i));
             }
             return {};
         }
@@ -688,7 +686,7 @@ namespace li { namespace detail {
             auto& value = base_type::_cache();
             if(!value)
                 value = in<void*, IsSafe>(m);
-            return (F)(value);
+            return reinterpret_cast<F>(value);
         }
 
         template<class F = T, class Module>
