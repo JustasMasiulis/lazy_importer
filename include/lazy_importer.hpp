@@ -351,7 +351,7 @@ namespace li { namespace detail {
 #elif defined(_M_IA64) || defined(__ia64__)
         return *reinterpret_cast<const win::PEB_T**>(static_cast<char*>(_rdteb()) + 0x60);
 #else
-#error Unsupported platform. Open an issue and I'll probably add support.
+#error Unsupported platform. Open an issue and Ill probably add support.
 #endif
     }
 
