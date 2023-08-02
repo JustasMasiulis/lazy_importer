@@ -658,7 +658,7 @@ namespace li { namespace detail {
             if(IsSafe && !m)
                 return {};
 
-            const exports_directory exports(reinterpret_cast<const char*>(m));
+            const exports_directory exports((const char*)(m));
             if(IsSafe && !exports)
                 return {};
 
