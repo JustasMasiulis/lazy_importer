@@ -262,14 +262,12 @@ namespace li { namespace detail {
 
     LAZY_IMPORTER_FORCEINLINE constexpr unsigned get_hash(offset_hash_pair pair) noexcept { return ( pair & 0xFFFFFFFF ); }
 
-    LAZY_IMPORTER_FORCEINLINE constexpr unsigned get_offset(offset_hash_pair pair) noexcept { return ( pair >> 32 ); }
+    LAZY_IMPORTER_FORCEINLINE constexpr unsigned get_offset(offset_hash_pair pair) noexcept { return static_cast<unsigned>( pair >> 32 ); }
 
     template<bool CaseSensitive = LAZY_IMPORTER_CASE_SENSITIVITY>
     LAZY_IMPORTER_FORCEINLINE constexpr unsigned hash_single(unsigned value, char c) noexcept
     {
-        return static_cast<unsigned int>(
-            (value ^ ((!CaseSensitive && c >= 'A' && c <= 'Z') ? (c | (1 << 5)) : c)) *
-            static_cast<unsigned long long>(16777619));
+        return (value ^ static_cast<unsigned>((!CaseSensitive && c >= 'A' && c <= 'Z') ? (c | (1 << 5)) : c)) * 16777619;
     }
 
     LAZY_IMPORTER_FORCEINLINE constexpr unsigned
@@ -351,7 +349,7 @@ namespace li { namespace detail {
 #elif defined(_M_IA64) || defined(__ia64__)
         return *reinterpret_cast<const win::PEB_T**>(static_cast<char*>(_rdteb()) + 0x60);
 #else
-#error Unsupported platform. Open an issue and I'll probably add support.
+#error Unsupported platform. Open an issue and Ill probably add support.
 #endif
     }
 
@@ -381,9 +379,9 @@ namespace li { namespace detail {
     }
 
     struct exports_directory {
+        unsigned long                      _ied_size;
         const char*                        _base;
         const win::IMAGE_EXPORT_DIRECTORY* _ied;
-        unsigned long                      _ied_size;
 
     public:
         using size_type = unsigned long;
@@ -415,9 +413,7 @@ namespace li { namespace detail {
 
         LAZY_IMPORTER_FORCEINLINE const char* name(size_type index) const noexcept
         {
-            return reinterpret_cast<const char*>(
-                _base + reinterpret_cast<const unsigned long*>(
-                            _base + _ied->AddressOfNames)[index]);
+            return _base + reinterpret_cast<const unsigned long*>(_base + _ied->AddressOfNames)[index];
         }
 
         LAZY_IMPORTER_FORCEINLINE const char* address(size_type index) const noexcept
@@ -535,7 +531,7 @@ namespace li { namespace detail {
         template<class T = void*, class Ldr>
         LAZY_IMPORTER_FORCEINLINE static T in(Ldr ldr) noexcept
         {
-            safe_module_enumerator e((const detail::win::LDR_DATA_TABLE_ENTRY_T*)(ldr));
+            safe_module_enumerator e(reinterpret_cast<const detail::win::LDR_DATA_TABLE_ENTRY_T*>(ldr));
             do {
                 if(hash(e.value->BaseDllName, get_offset(OHP)) == get_hash(OHP))
                     return (T)(e.value->DllBase);
